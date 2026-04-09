@@ -1,0 +1,4 @@
+[dependencies]
+esp-backtrace = { version = "0.14.2", features = ["esp-println", "panic-handler", "exception-handler", "esp32c3"] }
+esp-println = { version = "0.12.0", features = ["esp32c3"] }
+esp-hal = { version = "0.21.1", features = ["esp32c3"] }

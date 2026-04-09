@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Debug, Serialize)]
 pub struct FileNode {
@@ -69,4 +70,105 @@ fn build_tree(path: &Path) -> std::io::Result<FileNode> {
 #[tauri::command]
 pub fn read_file_content(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| e.to_string())
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ProjectTemplate {
+    pub id: String,
+    pub name: String,
+}
+
+use tauri::Manager;
+
+#[tauri::command]
+pub fn create_new_project(
+    app: tauri::AppHandle,
+    name: String,
+    parent_dir: String,
+    template: String,
+) -> Result<String, String> {
+    let parent_path = PathBuf::from(&parent_dir);
+    if !parent_path.exists() {
+        return Err(format!("A pasta destino não existe: {}", parent_dir));
+    }
+
+    let project_path = parent_path.join(&name);
+    if project_path.exists() {
+        return Err(format!("Já existe uma pasta com o nome '{}' nesse local.", name));
+    }
+
+    // Pass 1: Run standard `cargo new`
+    let output = Command::new("cargo")
+        .arg("new")
+        .arg(&name)
+        .arg("--bin")
+        .current_dir(&parent_path)
+        .output()
+        .map_err(|e| format!("Falha ao invocar cargo new: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Falha no cargo new. std_err: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    // Pass 2: Apply templates if necessary
+    match template.as_str() {
+        "standard" => {}
+        チップ => apply_esp_template(&app, &project_path, チップ)?,
+    }
+
+    Ok(project_path.to_string_lossy().to_string())
+}
+
+fn apply_esp_template(app: &tauri::AppHandle, project_path: &PathBuf, chip: &str) -> Result<(), String> {
+    let base_res_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
+    // local testing fallback or resource path
+    let mut tpl_dir = base_res_dir.join("templates").join(chip);
+    if !tpl_dir.exists() {
+        // Fallback for tauri dev where resources might just be in CWD
+        tpl_dir = std::env::current_dir().unwrap().join("templates").join(chip);
+    }
+    
+    if !tpl_dir.exists() {
+        return Err(format!("Template directory for '{}' not found at {:?}", chip, tpl_dir));
+    }
+
+    // 1. Overwrite main.rs
+    fs::copy(tpl_dir.join("main.rs"), project_path.join("src").join("main.rs"))
+        .map_err(|e| format!("Erro ao copiar main.rs do template: {}", e))?;
+
+    // 2. Intelligent Merge Cargo.toml using toml_edit
+    let target_toml = project_path.join("Cargo.toml");
+    let target_content = fs::read_to_string(&target_toml).map_err(|e| e.to_string())?;
+    let mut target_doc = target_content.parse::<toml_edit::DocumentMut>().map_err(|e| e.to_string())?;
+
+    let source_toml = tpl_dir.join("Cargo.toml");
+    if source_toml.exists() {
+        let source_content = fs::read_to_string(&source_toml).map_err(|e| e.to_string())?;
+        let source_doc = source_content.parse::<toml_edit::DocumentMut>().map_err(|e| e.to_string())?;
+
+        // Smart merge: Add [dependencies] from template without destroying original formatting
+        if let Some(deps) = source_doc.get("dependencies") {
+            target_doc["dependencies"] = deps.clone();
+        }
+        
+        fs::write(&target_toml, target_doc.to_string()).map_err(|e| e.to_string())?;
+    }
+
+    // 3. Copy .cargo/config.toml
+    let dot_cargo = project_path.join(".cargo");
+    fs::create_dir_all(&dot_cargo).map_err(|e| e.to_string())?;
+    fs::copy(tpl_dir.join(".cargo").join("config.toml"), dot_cargo.join("config.toml"))
+        .map_err(|e| format!("Erro config.toml: {}", e))?;
+
+    // 4. Copy rust-toolchain.toml (if it exists)
+    let tc_path = tpl_dir.join("rust-toolchain.toml");
+    if tc_path.exists() {
+        fs::copy(&tc_path, project_path.join("rust-toolchain.toml"))
+            .map_err(|e| format!("Erro ao copiar rust-toolchain.toml: {}", e))?;
+    }
+
+    Ok(())
 }

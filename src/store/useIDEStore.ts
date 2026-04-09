@@ -16,7 +16,9 @@ interface EditorState {
 interface ProjectState {
   activeProjectPath: string | null;
   activeProjectName: string | null;
+  isWizardOpen: boolean;
   setActiveProject: (path: string | null, name: string | null) => void;
+  setWizardOpen: (open: boolean) => void;
 }
 
 export const useIDEStore = create<EditorState & BoardSelectorState & ProjectState>((set) => ({
@@ -33,7 +35,9 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   // Project state
   activeProjectPath: null,
   activeProjectName: null,
+  isWizardOpen: false,
   setActiveProject: (path, name) => set({ activeProjectPath: path, activeProjectName: name }),
+  setWizardOpen: (open) => set({ isWizardOpen: open }),
   
   // Board selector state
   serialDialogOpen: false,

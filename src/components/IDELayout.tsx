@@ -7,6 +7,7 @@ import { BoardSelectorButton } from "./BoardSelectorButton";
 import { SerialPortDialog } from "./SerialPortDialog";
 import { BoardPortDialog } from "./BoardPortDialog";
 import { ProjectExplorer } from "./ProjectExplorer";
+import { ProjectWizard } from "./ProjectWizard";
 import { useIDEStore } from "../store/useIDEStore";
 import { BOARDS } from "../data/boards";
 // Material Icons
@@ -60,6 +61,12 @@ export function IDELayout() {
   const selectedPort    = useIDEStore((state) => state.selectedPort);
   const selectedBoard   = useIDEStore((state) => state.selectedBoard);
   const setSelectedBoard = useIDEStore((state) => state.setSelectedBoard);
+
+  // Project state
+  const activeProjectPath = useIDEStore((state) => state.activeProjectPath);
+  const setActiveProject = useIDEStore((state) => state.setActiveProject);
+  const setWizardOpen = useIDEStore((state) => state.setWizardOpen);
+  const addLog = useIDEStore((state) => state.addLog);
 
   const serialTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
@@ -274,13 +281,24 @@ export function IDELayout() {
           <button id="btn-debug" className="tool-btn tool-btn--ghost" title="Debug">
             <BugReportIcon sx={{ fontSize: 22 }} />
           </button>
-          <button id="btn-new" className="tool-btn tool-btn--ghost" title="New Project">
+          <button id="btn-new" className="tool-btn tool-btn--ghost" title="New Project" onClick={() => setWizardOpen(true)}>
             <NoteAddIcon sx={{ fontSize: 22 }} />
           </button>
-          <button id="btn-open" className="tool-btn tool-btn--ghost" title="Open Project" onClick={() => {
-            // Can be tied to a global open action or emit event, 
-            // but for now, we'll let ProjectExplorer handle its own folder open.
-            alert("Use the Open Folder button in the Explorer panel");
+          <button id="btn-open" className="tool-btn tool-btn--ghost" title="Open Project" onClick={async () => {
+            try {
+              const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+              const selected = await openDialog({
+                directory: true,
+                multiple: false,
+                title: "Select your Rust Project Folder",
+              });
+              if (selected && typeof selected === "string") {
+                const folderName = selected.split(/[/\\]/).pop() || "Project";
+                setActiveProject(selected, folderName);
+              }
+            } catch (e) {
+              addLog(`[Error] Dialog failed: ${e}`);
+            }
           }}>
             <FolderIcon sx={{ fontSize: 22 }} />
           </button>
@@ -381,7 +399,7 @@ export function IDELayout() {
               ) : activeSidebar === 1 ? (
                 <BoardManager />
               ) : activeSidebar === 2 ? (
-                useIDEStore((state) => state.activeProjectPath) ? (
+                activeProjectPath ? (
                   <LibraryManager />
                 ) : (
                   <div className="side-panel-empty" style={{ padding: '0 20px', textAlign: 'center' }}>
@@ -541,6 +559,8 @@ export function IDELayout() {
         onClose={() => setBoardPortDialogOpen(false)}
         onConfirm={handleConfirmBoardPort}
       />
+
+      <ProjectWizard />
 
     </div>
   );
