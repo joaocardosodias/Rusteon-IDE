@@ -188,7 +188,7 @@ export function SerialPortDialog({ open, onClose, onPortSelected, onOpenBoardPor
                 >
                   <UsbIcon sx={{ fontSize: 22, color: isActive ? '#fff' : '#a0a2a5', flexShrink: 0 }} />
                   <div className="flex-1 min-w-0 flex flex-col gap-1">
-                    <div style={{ fontSize: '14px', color: '#e0e2e5', letterSpacing: '0.2px' }}>Unknown</div>
+                    <div style={{ fontSize: '14px', color: '#e0e2e5', letterSpacing: '0.2px' }}>Serial Device</div>
                     <div style={{ fontSize: '12px', color: '#a0a2a5' }}>{port}</div>
                   </div>
                 </button>
