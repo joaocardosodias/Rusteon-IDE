@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LibraryManager } from "./LibraryManager";
+import { BoardManager } from "./BoardManager";
 import { Editor } from "./Editor";
 import { BoardSelectorButton } from "./BoardSelectorButton";
 import { SerialPortDialog } from "./SerialPortDialog";
 import { BoardPortDialog } from "./BoardPortDialog";
+import { ProjectExplorer } from "./ProjectExplorer";
 import { useIDEStore } from "../store/useIDEStore";
+import { BOARDS } from "../data/boards";
 // Material Icons
 import FolderOpenIcon from "@mui/icons-material/FolderOpenOutlined";
 import ExtensionIcon from "@mui/icons-material/ExtensionOutlined";
@@ -25,20 +28,20 @@ import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import RefreshIcon from "@mui/icons-material/Refresh";
 
 // ─── Log line types ───────────────────────────────────────────────────────────
+type BTab = "out" | "serial" | "errors";
 type LogLine = { text: string; type: "ok" | "err" | "warn" | "dim" | "prompt" | "plain" };
 
 // ─── Main IDE Layout ─────────────────────────────────────────────────────────
 export function IDELayout() {
   const [activeTab, setActiveTab] = useState<string>("main");
   const [activeSidebar, setActiveSidebar] = useState<number | null>(1);
-  const [activeBoard, setActiveBoard] = useState("ESP32-C3");
   const [activeBottomTab, setActiveBottomTab] = useState<BTab>("out");
   const [outputLines, setOutputLines] = useState<LogLine[]>([
-    { text: "Rusteon IDE v0.1 — ESP32-C3 pronto", type: "dim" },
-    { text: "aguardando...", type: "dim" },
+    { text: "Rusteon IDE v0.1 — Ready", type: "dim" },
+    { text: "waiting...", type: "dim" },
   ]);
   const [serialLines, setSerialLines] = useState<LogLine[]>([
-    { text: "── Monitor Serial — 115200 baud ──", type: "dim" },
+    { text: "── Serial Monitor ──", type: "dim" },
   ]);
   const [serialRunning, setSerialRunning] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
@@ -54,6 +57,7 @@ export function IDELayout() {
   const setSerialDialogOpen    = useIDEStore((state) => state.setSerialDialogOpen);
   const setBoardPortDialogOpen = useIDEStore((state) => state.setBoardPortDialogOpen);
   const setSelectedPort = useIDEStore((state) => state.setSelectedPort);
+  const selectedPort    = useIDEStore((state) => state.selectedPort);
   const selectedBoard   = useIDEStore((state) => state.selectedBoard);
   const setSelectedBoard = useIDEStore((state) => state.setSelectedBoard);
 
@@ -68,7 +72,6 @@ export function IDELayout() {
   const dragStartX = useRef(0);
   const dragStartW = useRef(0);
 
-  const boards = ["ESP32-C3", "ESP32-S3", "ESP32", "RP2040", "STM32F4"];
 
   // Handle port selection from SerialPortDialog — just close the dropdown, board port dialog has its own flow
   const handlePortSelected = (port: string) => {
@@ -82,7 +85,6 @@ export function IDELayout() {
   };
 
   const handleConfirmBoardPort = (board: string, port: string | null) => {
-    setActiveBoard(board);
     setSelectedBoard(board);
     if (port) setSelectedPort(port);
   };
@@ -107,7 +109,7 @@ export function IDELayout() {
       [1150, { text: "   Compiling esp-println v0.10.0", type: "dim" }],
       [1500, { text: "   Compiling sketch_apr7a v0.1.0", type: "dim" }],
       [2400, { text: "    Finished release [optimized] in 2.41s", type: "ok" }],
-      [2600, { text: "✓ Build concluído sem erros", type: "ok" }],
+      [2600, { text: "✓ Build complete with no errors", type: "ok" }],
     ]);
     setTimeout(() => setIsBuilding(false), 2800);
     try { await invoke("build_project"); } catch (_) { /* noop */ }
@@ -116,13 +118,14 @@ export function IDELayout() {
   const handleFlash = async () => {
     if (isFlashing) return;
     setIsFlashing(true);
+    const boardName = selectedBoardDef ? selectedBoardDef.name : "Chip Desconhecido";
     addOutput([
       [0,    { text: "> espflash flash --monitor", type: "prompt" }],
-      [400,  { text: `[00:00:01] Conectando ao ${activeBoard}...`, type: "dim" }],
-      [900,  { text: `[00:00:02] Chip detectado: ${activeBoard} (rev v0.3)`, type: "dim" }],
-      [1300, { text: "[00:00:03] ████████████████ 100% gravados", type: "dim" }],
-      [1800, { text: "✓ Upload concluído — dispositivo reiniciado", type: "ok" }],
-      [2100, { text: "── saída serial ──", type: "dim" }],
+      [400,  { text: `[00:00:01] Connecting to ${boardName}...`, type: "dim" }],
+      [900,  { text: `[00:00:02] Chip detected: ${boardName} (rev v0.3)`, type: "dim" }],
+      [1300, { text: "[00:00:03] ████████████████ 100% flashed", type: "dim" }],
+      [1800, { text: "✓ Upload complete — device restarted", type: "ok" }],
+      [2100, { text: "── serial output ──", type: "dim" }],
       [2400, { text: "LED on", type: "plain" }],
       [2900, { text: "LED off", type: "plain" }],
       [3400, { text: "LED on", type: "plain" }],
@@ -136,11 +139,11 @@ export function IDELayout() {
     if (serialRunning) {
       if (serialTickRef.current) clearInterval(serialTickRef.current);
       setSerialRunning(false);
-      setSerialLines((prev) => [...prev, { text: "── Serial fechado ──", type: "warn" }]);
+      setSerialLines((prev) => [...prev, { text: "── Serial closed ──", type: "warn" }]);
       return;
     }
     setSerialRunning(true);
-    setSerialLines((prev) => [...prev, { text: "── Serial aberto — 115200 ──", type: "ok" }]);
+    setSerialLines((prev) => [...prev, { text: "── Serial open — 115200 ──", type: "ok" }]);
     const msgs = ["LED on", "LED off"];
     let i = 0;
     serialTickRef.current = setInterval(() => {
@@ -224,6 +227,8 @@ export function IDELayout() {
   };
 
   const sidebarLabel = ["Explorer", "Boards", "Libraries", "Examples", "Search", "Settings"];
+  
+  const selectedBoardDef = BOARDS.find((b) => b.id === selectedBoard);
 
   return (
     <div className="ide-root">
@@ -244,7 +249,7 @@ export function IDELayout() {
             id="btn-build"
             className={`tool-btn tool-btn--primary ${isBuilding ? "tool-btn--loading" : ""}`}
             onClick={handleBuild}
-            title="Verificar / Build (Ctrl+R)"
+            title="Verify / Build (Ctrl+R)"
             disabled={isBuilding}
           >
             {isBuilding
@@ -269,20 +274,24 @@ export function IDELayout() {
           <button id="btn-debug" className="tool-btn tool-btn--ghost" title="Debug">
             <BugReportIcon sx={{ fontSize: 22 }} />
           </button>
-          <button id="btn-new" className="tool-btn tool-btn--ghost" title="Novo Projeto">
+          <button id="btn-new" className="tool-btn tool-btn--ghost" title="New Project">
             <NoteAddIcon sx={{ fontSize: 22 }} />
           </button>
-          <button id="btn-open" className="tool-btn tool-btn--ghost" title="Abrir Projeto">
+          <button id="btn-open" className="tool-btn tool-btn--ghost" title="Open Project" onClick={() => {
+            // Can be tied to a global open action or emit event, 
+            // but for now, we'll let ProjectExplorer handle its own folder open.
+            alert("Use the Open Folder button in the Explorer panel");
+          }}>
             <FolderIcon sx={{ fontSize: 22 }} />
           </button>
-          <button id="btn-save" className="tool-btn tool-btn--ghost" title="Salvar (Ctrl+S)">
+          <button id="btn-save" className="tool-btn tool-btn--ghost" title="Save (Ctrl+S)">
             <SaveIcon sx={{ fontSize: 22 }} />
           </button>
         </div>
 
         {/* Board Selector Button with Dropdowns */}
         <div style={{ position: 'relative', marginLeft: '8px' }}>
-          <BoardSelectorButton activeBoard={selectedBoard || activeBoard} />
+          <BoardSelectorButton activeBoard={selectedBoardDef ? selectedBoardDef.name : "Select Board"} />
           
           {/* Serial port quick-select dropdown */}
           <SerialPortDialog
@@ -300,7 +309,7 @@ export function IDELayout() {
         {/* Serial Monitor button */}
         <button
           id="btn-serial"
-          title={serialRunning ? "Fechar Serial" : "Abrir Monitor Serial"}
+          title={serialRunning ? "Close Serial" : "Open Serial Monitor"}
           onClick={handleSerial}
           className={`tool-btn tool-btn--ghost tool-btn--serial ${serialRunning ? "tool-btn--active" : ""}`}
         >
@@ -322,9 +331,9 @@ export function IDELayout() {
             {label}
           </div>
         ))}
-        <div className="ide-tab-add" title="Novo arquivo">+</div>
+        <div className="ide-tab-add" title="New file">+</div>
         <div className="ide-tabbar-spacer" />
-        <div className="ide-tab-more" title="Mais arquivos">⋯</div>
+        <div className="ide-tab-more" title="More files">⋯</div>
       </div>
 
       {/* ── BODY ──────────────────────────────────────────────────────── */}
@@ -354,7 +363,7 @@ export function IDELayout() {
             id="sidebar-btn-settings"
             className={`icon-sidebar-btn ${activeSidebar === 5 ? "icon-sidebar-btn--active" : ""}`}
             onClick={() => setActiveSidebar(prev => prev === 5 ? null : 5)}
-            title="Configurações"
+            title="Settings"
           >
             <SettingsIcon sx={{ fontSize: 29 }} />
           </button>
@@ -367,19 +376,42 @@ export function IDELayout() {
               <div className="side-panel-header">
                 {sidebarLabel[activeSidebar] || "Explorer"}
               </div>
-              {activeSidebar === 2 ? (
-                <LibraryManager />
+              {activeSidebar === 0 ? (
+                <ProjectExplorer />
+              ) : activeSidebar === 1 ? (
+                <BoardManager />
+              ) : activeSidebar === 2 ? (
+                useIDEStore((state) => state.activeProjectPath) ? (
+                  <LibraryManager />
+                ) : (
+                  <div className="side-panel-empty" style={{ padding: '0 20px', textAlign: 'center' }}>
+                    <div className="side-panel-empty-icon" style={{ marginBottom: '16px', opacity: 0.5 }}>
+                      <FolderOpenIcon sx={{ fontSize: 40 }} />
+                    </div>
+                    <p className="side-panel-empty-text" style={{ fontSize: '13px', color: '#cdd6f4', marginBottom: '8px' }}>
+                      No project opened
+                    </p>
+                    <p className="side-panel-empty-sub" style={{ fontSize: '12px', color: '#888', lineHeight: 1.5 }}>
+                      You need to open or create a Rust project to use the Library Manager.
+                    </p>
+                    <button
+                      className="ide-tab-add"
+                      style={{ marginTop: '20px', padding: '6px 16px', borderRadius: '4px', backgroundColor: 'var(--ide-teal)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600 }}
+                      onClick={() => alert("Project Explorer functionality will be implemented soon.")}
+                    >
+                      Open Project
+                    </button>
+                  </div>
+                )
               ) : (
                 <div className="side-panel-empty">
                   <div className="side-panel-empty-icon">
-                    {activeSidebar === 0 && <FolderOpenIcon sx={{ fontSize: 29 }} />}
-                    {activeSidebar === 1 && <DeveloperBoardIcon sx={{ fontSize: 29 }} />}
                     {activeSidebar === 3 && <BoltIcon sx={{ fontSize: 29 }} />}
                     {activeSidebar === 4 && <SearchIcon sx={{ fontSize: 29 }} />}
                     {activeSidebar === 5 && <SettingsIcon sx={{ fontSize: 29 }} />}
                   </div>
                   <p className="side-panel-empty-text">{sidebarLabel[activeSidebar]}</p>
-                  <p className="side-panel-empty-sub">Em breve</p>
+                  <p className="side-panel-empty-sub">Coming soon</p>
                 </div>
               )}
             </div>
@@ -387,7 +419,7 @@ export function IDELayout() {
             <div
               className={`side-resize-handle ${isSideDragging ? "side-resize-handle--dragging" : ""}`}
               onMouseDown={onSideDragMouseDown}
-              title="Arrastar para redimensionar"
+              title="Drag to resize"
             />
           </>
         )}
@@ -404,7 +436,7 @@ export function IDELayout() {
           <div
             className={`resize-handle ${isDragging ? "resize-handle--dragging" : ""}`}
             onMouseDown={onDragMouseDown}
-            title="Arrastar para redimensionar"
+            title="Drag to resize"
           >
             <div className="resize-handle-bar" />
           </div>
@@ -414,7 +446,7 @@ export function IDELayout() {
             {/* Bottom Tabs */}
             <div className="ide-bottom-tabs">
               {(["out", "serial", "errors"] as BTab[]).map((tab) => {
-                const labels: Record<BTab, string> = { out: "Output", serial: "Monitor Serial", errors: "Erros" };
+                const labels: Record<BTab, string> = { out: "Output", serial: "Serial Monitor", errors: "Errors" };
                 const isActive = activeBottomTab === tab;
                 return (
                   <button
@@ -432,10 +464,10 @@ export function IDELayout() {
               <div className="ide-bottom-tabs-spacer" />
               <button
                 className="bottom-panel-action"
-                title="Limpar console"
+                title="Clear console"
                 onClick={() => {
                   if (activeBottomTab === "out") setOutputLines([]);
-                  else setSerialLines([{ text: "── Monitor Serial — 115200 baud ──", type: "dim" }]);
+                  else setSerialLines([{ text: "── Serial Monitor ──", type: "dim" }]);
                 }}
               >
                 <DeleteSweepIcon sx={{ fontSize: 15 }} />
@@ -450,7 +482,7 @@ export function IDELayout() {
                 ))}
                 <div className="console-line">
                   <span style={{ color: "var(--syn-fn)" }}>&gt;</span>{" "}
-                  <span style={{ color: "var(--ide-text-faint)" }}>aguardando...</span>{" "}
+                  <span style={{ color: "var(--ide-text-faint)" }}>waiting...</span>{" "}
                   <span className="t-blink" />
                 </div>
               </div>
@@ -475,7 +507,7 @@ export function IDELayout() {
             {/* Errors Tab */}
             {activeBottomTab === "errors" && (
               <div className="console-output">
-                <div className="console-line" style={{ color: "var(--syn-str)" }}>✓ Nenhum erro encontrado.</div>
+                <div className="console-line" style={{ color: "var(--syn-str)" }}>✓ No errors found.</div>
               </div>
             )}
           </div>
@@ -487,15 +519,19 @@ export function IDELayout() {
         <div className="statusbar-left">
           <span className="statusbar-item statusbar-item--board">
             <DeveloperBoardIcon sx={{ fontSize: 11 }} />
-            {selectedBoard || activeBoard}
+            {selectedBoardDef ? selectedBoardDef.name : "No board selected"}
           </span>
-          <span className="statusbar-item">riscv32imc-unknown-none-elf</span>
+          {selectedBoardDef && (
+            <span className="statusbar-item">{selectedBoardDef.target}</span>
+          )}
           <span className="statusbar-item">Ln 13, Col 1</span>
         </div>
         <div className="statusbar-right">
           {serialRunning && <span className="statusbar-item statusbar-item--ok">● Serial: 115200</span>}
-          <span className="statusbar-item statusbar-item--muted">COM4</span>
-          <span className="statusbar-item statusbar-item--warn">No board selected</span>
+          
+          <span className={`statusbar-item ${selectedPort ? "statusbar-item--muted" : "statusbar-item--warn"}`}>
+            {selectedPort ? selectedPort : "No port selected"}
+          </span>
         </div>
       </div>
 

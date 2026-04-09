@@ -13,7 +13,13 @@ interface EditorState {
   setIsBuilding: (status: boolean) => void;
 }
 
-export const useIDEStore = create<EditorState & BoardSelectorState>((set) => ({
+interface ProjectState {
+  activeProjectPath: string | null;
+  activeProjectName: string | null;
+  setActiveProject: (path: string | null, name: string | null) => void;
+}
+
+export const useIDEStore = create<EditorState & BoardSelectorState & ProjectState>((set) => ({
   activeFile: 'main.rs',
   content: '// Bem-vindo ao Rusteon IDE\nfn main() {\n    println!("Olá, Rust Embarcado!");\n}',
   logs: ['Rusteon IDE inicializada...'],
@@ -23,6 +29,11 @@ export const useIDEStore = create<EditorState & BoardSelectorState>((set) => ({
   addLog: (log) => set((state) => ({ logs: [...state.logs, `[${new Date().toLocaleTimeString()}] ${log}`] })),
   clearLogs: () => set({ logs: [] }),
   setIsBuilding: (status) => set({ isBuilding: status }),
+  
+  // Project state
+  activeProjectPath: null,
+  activeProjectName: null,
+  setActiveProject: (path, name) => set({ activeProjectPath: path, activeProjectName: name }),
   
   // Board selector state
   serialDialogOpen: false,

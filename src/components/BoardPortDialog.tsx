@@ -13,14 +13,7 @@ interface BoardPortDialogProps {
   onConfirm: (board: string, port: string | null) => void;
 }
 
-const BOARDS = [
-  { id: 'esp32c3', name: 'ESP32-C3 Dev Module', vendor: 'Espressif' },
-  { id: 'esp32s3', name: 'ESP32-S3 Dev Module', vendor: 'Espressif' },
-  { id: 'esp32',   name: 'ESP32 Dev Module',    vendor: 'Espressif' },
-  { id: 'rp2040',  name: 'Raspberry Pi Pico',   vendor: 'Raspberry Pi' },
-  { id: 'stm32f4', name: 'STM32F4 Discovery',   vendor: 'STMicroelectronics' },
-  { id: 'arduino_uno', name: 'Arduino Uno (RISC-V)', vendor: 'Arduino' },
-];
+import { BOARDS } from '../data/boards';
 
 export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogProps) {
   const { selectedBoard, selectedPort, setSelectedBoard, setSelectedPort } = useIDEStore();
@@ -30,6 +23,7 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
   const [tempPort, setTempPort]   = useState<string | null>(selectedPort);
   const [ports, setPorts]         = useState<string[]>([]);
   const [showAll, setShowAll]     = useState(false);
+  const [installedTargets, setInstalledTargets] = useState<string[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Auto-refresh ports every second
@@ -48,6 +42,14 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
     fetchPorts();
     intervalRef.current = setInterval(fetchPorts, 1000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [open]);
+
+  // Fetch installed targets
+  useEffect(() => {
+    if (!open) return;
+    invoke<{ installed_targets: string[] }>('check_installed_targets')
+      .then(res => setInstalledTargets(res.installed_targets))
+      .catch(err => console.error("Falha ao checar boards:", err));
   }, [open]);
 
   // Reset temp state when opening
@@ -195,6 +197,7 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
               ) : (
                 filteredBoards.map((board) => {
                   const isActive = tempBoard === board.id;
+                  const isInstalled = installedTargets.includes(board.target);
                   return (
                     <button
                       key={board.id}
@@ -206,6 +209,7 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
                         borderLeft: `3px solid ${isActive ? 'var(--ide-teal)' : 'transparent'}`,
                         display: 'flex', alignItems: 'center', gap: '10px',
                         transition: 'background 120ms ease',
+                        opacity: isInstalled ? 1 : 0.45,
                       }}
                       onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'; }}
                       onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
@@ -214,6 +218,19 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
                       <div>
                         <div style={{ fontSize: '12.5px', fontWeight: 600, color: isActive ? '#cdd6f4' : '#bbb' }}>
                           {board.name}
+                          {!isInstalled && (
+                            <span style={{
+                              fontSize: '9px',
+                              marginLeft: '8px',
+                              backgroundColor: 'rgba(255,255,255,0.1)',
+                              color: '#aaa',
+                              padding: '2px 4px',
+                              borderRadius: '3px',
+                              fontWeight: 500
+                            }}>
+                              NOT INSTALLED
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '10.5px', color: '#555', marginTop: '1px' }}>
                           {board.vendor}
