@@ -5,6 +5,7 @@ use std::process::{Command, Stdio};
 use tauri::Emitter;
 
 mod project;
+mod library;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -352,6 +353,10 @@ pub fn run() {
             get_serial_ports,
             project::read_dir_recursive,
             project::read_file_content,
+            project::create_new_project,
+            library::get_project_libraries,
+            library::add_library_to_project,
+            library::remove_library_from_project,
             check_installed_targets,
             install_board_target,
             remove_board_target,
