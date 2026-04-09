@@ -5,30 +5,33 @@ export function Editor() {
   const { content, setContent } = useIDEStore();
 
   return (
-    <div className="flex-1 w-full h-full min-h-0">
-      <MonacoEditor
-        height="100%"
-        defaultLanguage="rust"
-        theme="vs-dark"
-        value={content}
-        onChange={(value) => setContent(value || "")}
-        options={{
-          minimap: { enabled: true },
-          fontSize: 14,
-          fontFamily: "JetBrains Mono, Fira Code, monospace",
-          cursorBlinking: "smooth",
-          smoothScrolling: true,
-          contextmenu: true,
-          renderLineHighlight: "all",
-          scrollbar: {
-            vertical: "visible",
-            horizontal: "visible",
-            useShadows: false,
-            verticalScrollbarSize: 10,
-            horizontalScrollbarSize: 10,
-          },
-        }}
-      />
-    </div>
+    <MonacoEditor
+      height="100%"
+      defaultLanguage="rust"
+      theme="vs-dark"
+      value={content}
+      onChange={(value) => setContent(value || "")}
+      options={{
+        minimap: { enabled: true },
+        fontSize: 13,
+        fontFamily: "JetBrains Mono, Fira Code, 'Courier New', monospace",
+        lineHeight: 21,
+        cursorBlinking: "smooth",
+        smoothScrolling: true,
+        contextmenu: true,
+        renderLineHighlight: "line",
+        lineNumbers: "on",
+        glyphMargin: false,
+        folding: true,
+        padding: { top: 10 },
+        scrollbar: {
+          vertical: "visible",
+          horizontal: "visible",
+          useShadows: false,
+          verticalScrollbarSize: 8,
+          horizontalScrollbarSize: 8,
+        },
+      }}
+    />
   );
 }
