@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { BoardSelectorState } from '../types/board-selector';
 
 interface EditorState {
   activeFile: string | null;
@@ -12,7 +13,7 @@ interface EditorState {
   setIsBuilding: (status: boolean) => void;
 }
 
-export const useIDEStore = create<EditorState>((set) => ({
+export const useIDEStore = create<EditorState & BoardSelectorState>((set) => ({
   activeFile: 'main.rs',
   content: '// Bem-vindo ao Rusteon IDE\nfn main() {\n    println!("Olá, Rust Embarcado!");\n}',
   logs: ['Rusteon IDE inicializada...'],
@@ -22,4 +23,18 @@ export const useIDEStore = create<EditorState>((set) => ({
   addLog: (log) => set((state) => ({ logs: [...state.logs, `[${new Date().toLocaleTimeString()}] ${log}`] })),
   clearLogs: () => set({ logs: [] }),
   setIsBuilding: (status) => set({ isBuilding: status }),
+  
+  // Board selector state
+  serialDialogOpen: false,
+  boardDialogOpen: false,
+  boardPortDialogOpen: false,
+  selectedPort: null,
+  selectedBoard: null,
+  
+  // Board selector actions
+  setSerialDialogOpen: (open) => set({ serialDialogOpen: open }),
+  setBoardDialogOpen: (open) => set({ boardDialogOpen: open }),
+  setBoardPortDialogOpen: (open) => set({ boardPortDialogOpen: open }),
+  setSelectedPort: (port) => set({ selectedPort: port }),
+  setSelectedBoard: (board) => set({ selectedBoard: board }),
 }));
