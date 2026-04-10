@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { LibraryManager } from "./LibraryManager";
 import { BoardManager } from "./BoardManager";
 import { Editor } from "./Editor";
@@ -18,6 +19,7 @@ import DeveloperBoardIcon from "@mui/icons-material/DeveloperBoardOutlined";
 import SearchIcon from "@mui/icons-material/SearchOutlined";
 import SettingsIcon from "@mui/icons-material/SettingsOutlined";
 import UsbIcon from "@mui/icons-material/Usb";
+import CloseIcon from "@mui/icons-material/Close";
 import CheckIcon from "@mui/icons-material/Check";
 import FileUploadIcon from "@mui/icons-material/FileUpload";
 import BugReportIcon from "@mui/icons-material/BugReport";
@@ -27,6 +29,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import CloseOutlinedIcon from "@mui/icons-material/CloseOutlined";
 
 // ─── Log line types ───────────────────────────────────────────────────────────
 type BTab = "out" | "serial" | "errors";
@@ -34,7 +37,7 @@ type LogLine = { text: string; type: "ok" | "err" | "warn" | "dim" | "prompt" | 
 
 // ─── Main IDE Layout ─────────────────────────────────────────────────────────
 export function IDELayout() {
-  const [activeTab, setActiveTab] = useState<string>("main");
+
   const [activeSidebar, setActiveSidebar] = useState<number | null>(1);
   const [activeBottomTab, setActiveBottomTab] = useState<BTab>("out");
   const [outputLines, setOutputLines] = useState<LogLine[]>([
@@ -67,6 +70,14 @@ export function IDELayout() {
   const setActiveProject = useIDEStore((state) => state.setActiveProject);
   const setWizardOpen = useIDEStore((state) => state.setWizardOpen);
   const addLog = useIDEStore((state) => state.addLog);
+  const openTabs = useIDEStore((state) => state.openTabs);
+  const removeOpenTab = useIDEStore((state) => state.removeOpenTab);
+  const activeFile = useIDEStore((state) => state.activeFile);
+  const setActiveFile = useIDEStore((state) => state.setActiveFile);
+  const setContent = useIDEStore((state) => state.setContent);
+  const content = useIDEStore((state) => state.content);
+  const featureDiagnostics = useIDEStore((state) => state.featureDiagnostics);
+  const setFeatureDiagnostics = useIDEStore((state) => state.setFeatureDiagnostics);
 
   const serialTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
@@ -96,49 +107,161 @@ export function IDELayout() {
     if (port) setSelectedPort(port);
   };
 
-  const addOutput = (lines: [number, LogLine][]) => {
-    setActiveBottomTab("out");
-    setOutputLines([]);
-    lines.forEach(([ms, line]) => {
-      setTimeout(() => {
-        setOutputLines((prev) => [...prev, line]);
-      }, ms);
+  const handleOpenFolder = async () => {
+    try {
+      const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "Select your Rust Project Folder",
+      });
+      if (selected && typeof selected === "string") {
+        const folderName = selected.split(/[/\\]/).pop() || "Project";
+        setActiveProject(selected, folderName);
+      }
+    } catch (e) {
+      addLog(`[Error] Dialog failed: ${e}`);
+    }
+  };
+
+  useEffect(() => {
+    const unlistenBuild = listen<any>("ide-build-log", (event) => {
+      let type: "plain" | "error" | "warn" | "dim" | "ok" = "plain";
+      const txt = event.payload.line;
+      if (txt.includes("error:") || txt.includes("error[")) type = "error";
+      else if (txt.includes("warning:")) type = "warn";
+      else if (txt.trim().startsWith("Compiling") || txt.trim().startsWith("Finished") || txt.trim().startsWith("Running")) type = "ok";
+      
+      setOutputLines(prev => [...prev, { text: txt, type }]);
     });
+    const unlistenFlash = listen<any>("ide-flash-log", (event) => {
+      setOutputLines(prev => [...prev, { text: event.payload.line, type: "plain" }]);
+    });
+    return () => {
+      unlistenBuild.then(f => f());
+      unlistenFlash.then(f => f());
+    };
+  }, []);
+
+  const handleCancelProcess = async () => {
+    try {
+      await invoke("cancel_process");
+    } catch (e) {
+      addLog(`Failed to cancel: ${e}`);
+    }
+  };
+
+  const autoSaveActiveFile = async (): Promise<boolean> => {
+    if (!activeFile || !content) return true; // nothing to save
+    try {
+      await invoke("save_file", { path: activeFile, content });
+      setOutputLines(prev => [...prev, { text: `  💾 Auto-saved ${activeFile.split(/[/\\]/).pop()}`, type: "dim" }]);
+      return true;
+    } catch (e) {
+      setOutputLines(prev => [...prev, { text: `[Error] Auto-save failed: ${e}`, type: "error" }]);
+      return false;
+    }
+  };
+
+  const runDiagnosticsOnFailure = async () => {
+    if (!activeProjectPath) return;
+    try {
+      const diags = await invoke<any[]>("check_project", { projectPath: activeProjectPath });
+      if (diags && diags.length > 0) {
+        setFeatureDiagnostics(diags);
+        setOutputLines(prev => [...prev, { 
+          text: `⚠ ${diags.length} missing features detected. Check the Library Manager -> Diagnostics tab to fix them.`, 
+          type: "warn" 
+        }]);
+      } else {
+        setFeatureDiagnostics([]);
+      }
+    } catch {
+      // fail silently
+    }
   };
 
   const handleBuild = async () => {
-    if (isBuilding) return;
+    if (!activeProjectPath) {
+      addLog("No project opened for build.");
+      return;
+    }
+    if (isBuilding || isFlashing) {
+      handleCancelProcess();
+      return;
+    }
     setIsBuilding(true);
-    addOutput([
-      [0,    { text: "> cargo build --release", type: "prompt" }],
-      [500,  { text: "   Compiling esp-hal v0.18.0", type: "dim" }],
-      [850,  { text: "   Compiling esp-backtrace v0.13.0", type: "dim" }],
-      [1150, { text: "   Compiling esp-println v0.10.0", type: "dim" }],
-      [1500, { text: "   Compiling sketch_apr7a v0.1.0", type: "dim" }],
-      [2400, { text: "    Finished release [optimized] in 2.41s", type: "ok" }],
-      [2600, { text: "✓ Build complete with no errors", type: "ok" }],
-    ]);
-    setTimeout(() => setIsBuilding(false), 2800);
-    try { await invoke("build_project"); } catch (_) { /* noop */ }
+    setActiveBottomTab("out");
+    setOutputLines([{ text: "> cargo build --release", type: "prompt" }]);
+    
+    try {
+      // Always save before building so cargo compiles the latest code
+      const saved = await autoSaveActiveFile();
+      if (!saved) { setIsBuilding(false); return; }
+
+      const res = await invoke<string>("build_project", { projectPath: activeProjectPath });
+      setOutputLines(prev => [...prev, { text: `✓ ${res}`, type: "ok" }]);
+      setFeatureDiagnostics([]); // clear on success
+    } catch (e) {
+      setOutputLines(prev => [...prev, { text: `[Error] ${e}`, type: "error" }]);
+      await runDiagnosticsOnFailure();
+    } finally {
+      setIsBuilding(false);
+    }
   };
 
   const handleFlash = async () => {
-    if (isFlashing) return;
+    if (!activeProjectPath) {
+      addLog("No project opened for flash.");
+      return;
+    }
+    if (isBuilding || isFlashing) {
+      handleCancelProcess();
+      return;
+    }
     setIsFlashing(true);
-    const boardName = selectedBoardDef ? selectedBoardDef.name : "Chip Desconhecido";
-    addOutput([
-      [0,    { text: "> espflash flash --monitor", type: "prompt" }],
-      [400,  { text: `[00:00:01] Connecting to ${boardName}...`, type: "dim" }],
-      [900,  { text: `[00:00:02] Chip detected: ${boardName} (rev v0.3)`, type: "dim" }],
-      [1300, { text: "[00:00:03] ████████████████ 100% flashed", type: "dim" }],
-      [1800, { text: "✓ Upload complete — device restarted", type: "ok" }],
-      [2100, { text: "── serial output ──", type: "dim" }],
-      [2400, { text: "LED on", type: "plain" }],
-      [2900, { text: "LED off", type: "plain" }],
-      [3400, { text: "LED on", type: "plain" }],
-    ]);
-    setTimeout(() => setIsFlashing(false), 3600);
-    try { await invoke("flash_firmware"); } catch (_) { /* noop */ }
+    setActiveBottomTab("out");
+    
+    setOutputLines([{ text: "> Upload starting...", type: "prompt" }]);
+    try {
+      // 1. Auto-save before any compilation
+      const saved = await autoSaveActiveFile();
+      if (!saved) { setIsFlashing(false); return; }
+
+      // 2. Build
+      setOutputLines(prev => [...prev, { text: "> cargo build --release", type: "prompt" }]);
+      await invoke<string>("build_project", { projectPath: activeProjectPath });
+      
+      // 3. Flash
+      setOutputLines(prev => [...prev, { text: "> Flashing...", type: "prompt" }]);
+      const res = await invoke<string>("flash_firmware", {
+        projectPath: activeProjectPath,
+        flashTool: selectedBoardDef?.flashTool || "espflash",
+        port: selectedPort === "Auto" ? null : selectedPort
+      });
+      setOutputLines(prev => [...prev, { text: `✓ ${res}`, type: "ok" }]);
+      setFeatureDiagnostics([]); // clear on success
+    } catch (e) {
+      setOutputLines(prev => [...prev, { text: `[Error] Deploy failed: ${e}`, type: "error" }]);
+      // Fallback: check if the error was a compile error masquerading as a deploy error
+      // Actually build_project fails first if it didn't compile, but probe-rs / espflash
+      // might fail compilation if used directly. We just safely run diagnostics either way.
+      await runDiagnosticsOnFailure();
+    } finally {
+      setIsBuilding(false);
+      setIsFlashing(false);
+    }
+  };
+
+  const handleSaveFile = async () => {
+    if (activeFile && content) {
+      try {
+        await invoke("save_file", { path: activeFile, content });
+        addLog(`✓ Saved ${activeFile.split(/[/\\]/).pop()}`);
+      } catch (e) {
+        addLog(`[Error] Failed to save file: ${e}`);
+      }
+    }
   };
 
   const handleSerial = () => {
@@ -254,25 +377,23 @@ export function IDELayout() {
         <div className="ide-toolbar-actions">
           <button
             id="btn-build"
-            className={`tool-btn tool-btn--primary ${isBuilding ? "tool-btn--loading" : ""}`}
+            className={`tool-btn tool-btn--primary ${isBuilding ? "tool-btn--busy" : ""}`}
             onClick={handleBuild}
-            title="Verify / Build (Ctrl+R)"
-            disabled={isBuilding}
+            title={isBuilding ? "Cancel Build" : "Verify / Build (Ctrl+R)"}
           >
             {isBuilding
-              ? <RefreshIcon sx={{ fontSize: 22, color: '#fff' }} className="spin-icon" />
+              ? <CloseIcon sx={{ fontSize: 22, color: '#fff' }} />
               : <CheckIcon sx={{ fontSize: 22, color: '#fff' }} />}
           </button>
 
           <button
             id="btn-upload"
-            className={`tool-btn tool-btn--primary ${isFlashing ? "tool-btn--loading" : ""}`}
+            className={`tool-btn tool-btn--primary ${isFlashing ? "tool-btn--busy" : ""}`}
             onClick={handleFlash}
-            title="Upload / Flash (Ctrl+U)"
-            disabled={isFlashing}
+            title={isFlashing ? "Cancel Upload" : "Upload / Flash (Ctrl+U)"}
           >
             {isFlashing
-              ? <RefreshIcon sx={{ fontSize: 22, color: '#fff' }} className="spin-icon" />
+              ? <CloseIcon sx={{ fontSize: 22, color: '#fff' }} />
               : <FileUploadIcon sx={{ fontSize: 22, color: '#fff' }} />}
           </button>
 
@@ -284,25 +405,10 @@ export function IDELayout() {
           <button id="btn-new" className="tool-btn tool-btn--ghost" title="New Project" onClick={() => setWizardOpen(true)}>
             <NoteAddIcon sx={{ fontSize: 22 }} />
           </button>
-          <button id="btn-open" className="tool-btn tool-btn--ghost" title="Open Project" onClick={async () => {
-            try {
-              const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
-              const selected = await openDialog({
-                directory: true,
-                multiple: false,
-                title: "Select your Rust Project Folder",
-              });
-              if (selected && typeof selected === "string") {
-                const folderName = selected.split(/[/\\]/).pop() || "Project";
-                setActiveProject(selected, folderName);
-              }
-            } catch (e) {
-              addLog(`[Error] Dialog failed: ${e}`);
-            }
-          }}>
+          <button id="btn-open" className="tool-btn tool-btn--ghost" title="Open Project" onClick={handleOpenFolder}>
             <FolderIcon sx={{ fontSize: 22 }} />
           </button>
-          <button id="btn-save" className="tool-btn tool-btn--ghost" title="Save (Ctrl+S)">
+          <button id="btn-save" className="tool-btn tool-btn--ghost" title="Save (Ctrl+S)" onClick={handleSaveFile}>
             <SaveIcon sx={{ fontSize: 22 }} />
           </button>
         </div>
@@ -337,21 +443,37 @@ export function IDELayout() {
       </div>
 
       {/* ── TAB BAR ───────────────────────────────────────────────────── */}
-      <div className="ide-tabbar">
-        {[{ id: "main", label: "sketch_apr7a.rs" }, { id: "cargo", label: "Cargo.toml" }].map(({ id, label }) => (
+      <div className={`ide-tabbar ${openTabs.length === 0 ? "ide-tabbar--hidden" : ""}`}>
+        {openTabs.map((tab) => (
           <div
-            key={id}
-            id={`tab-${id}`}
-            onClick={() => setActiveTab(id)}
-            className={`ide-tab ${activeTab === id ? "ide-tab--active" : ""}`}
+            key={tab.path}
+            id={`tab-${tab.path}`}
+            onClick={async () => {
+              setActiveFile(tab.path);
+              try {
+                const text = await invoke<string>("read_file_content", { path: tab.path });
+                setContent(text);
+              } catch (e) {
+                console.error("Failed to read tab content", e);
+              }
+            }}
+            className={`ide-tab ${activeFile === tab.path ? "ide-tab--active" : ""}`}
+            style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
-            <InsertDriveFileIcon sx={{ fontSize: 12, opacity: 0.5 }} />
-            {label}
+            <InsertDriveFileIcon sx={{ fontSize: 13, opacity: 0.6 }} />
+            {tab.name}
+            <div 
+              className="ide-tab-close" 
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                removeOpenTab(tab.path); 
+              }}
+              style={{ display: 'flex', alignItems: 'center', marginLeft: '4px', opacity: 0.5, borderRadius: '3px' }}
+            >
+              <CloseOutlinedIcon sx={{ fontSize: 12 }} />
+            </div>
           </div>
         ))}
-        <div className="ide-tab-add" title="New file">+</div>
-        <div className="ide-tabbar-spacer" />
-        <div className="ide-tab-more" title="More files">⋯</div>
       </div>
 
       {/* ── BODY ──────────────────────────────────────────────────────── */}
@@ -415,7 +537,7 @@ export function IDELayout() {
                     <button
                       className="ide-tab-add"
                       style={{ marginTop: '20px', padding: '6px 16px', borderRadius: '4px', backgroundColor: 'var(--ide-teal)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600 }}
-                      onClick={() => alert("Project Explorer functionality will be implemented soon.")}
+                      onClick={handleOpenFolder}
                     >
                       Open Project
                     </button>

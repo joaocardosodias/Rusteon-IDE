@@ -1,8 +1,24 @@
+import { invoke } from "@tauri-apps/api/core";
 import { Editor as MonacoEditor } from "@monaco-editor/react";
 import { useIDEStore } from "../store/useIDEStore";
 
 export function Editor() {
-  const { content, setContent } = useIDEStore();
+  const { content, setContent, activeFile, addLog } = useIDEStore();
+
+  const handleEditorDidMount = (editor: any, monaco: any) => {
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
+      if (activeFile) {
+        try {
+          const currentContent = editor.getValue();
+          // Pushes text from the editor model to disk using the active file path
+          await invoke("save_file", { path: activeFile, content: currentContent });
+          addLog(`✓ Saved ${activeFile.split(/[/\\]/).pop()}`);
+        } catch (e) {
+          addLog(`[Error] Failed to save file: ${e}`);
+        }
+      }
+    });
+  };
 
   return (
     <MonacoEditor
@@ -11,6 +27,7 @@ export function Editor() {
       theme="vs-dark"
       value={content}
       onChange={(value) => setContent(value || "")}
+      onMount={handleEditorDidMount}
       options={{
         minimap: { enabled: true },
         fontSize: 13,
@@ -21,7 +38,7 @@ export function Editor() {
         contextmenu: true,
         renderLineHighlight: "line",
         lineNumbers: "on",
-        glyphMargin: false,
+        glyphMargin: true, // enabled for potential debug breakpoints/diagnostics
         folding: true,
         padding: { top: 10 },
         scrollbar: {

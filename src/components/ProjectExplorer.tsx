@@ -136,7 +136,7 @@ export function ProjectExplorer() {
 
 function TreeNode({ node, depth }: { node: FileNode; depth: number }) {
   const [expanded, setExpanded] = useState(false);
-  const { setActiveFile, setContent, addLog } = useIDEStore();
+  const { setActiveFile, setContent, addLog, addOpenTab } = useIDEStore();
 
   const isRust = node.name.endsWith(".rs");
   const isToml = node.name.endsWith(".toml");
@@ -148,7 +148,8 @@ function TreeNode({ node, depth }: { node: FileNode; depth: number }) {
       try {
         const text = await invoke<string>("read_file_content", { path: node.path });
         setContent(text);
-        setActiveFile(node.name);
+        addOpenTab({ path: node.path, name: node.name });
+        setActiveFile(node.path);
       } catch (e) {
         addLog(`[Error] Failed to read ${node.name}`);
       }
