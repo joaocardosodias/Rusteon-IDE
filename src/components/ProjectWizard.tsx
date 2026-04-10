@@ -1,227 +1,329 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useIDEStore } from "../store/useIDEStore";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined';
 import CloseOutlinedIcon from '@mui/icons-material/CloseOutlined';
+import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
 import { BOARDS } from "../data/boards";
+
+type Step = "form" | "toolchain-warning" | "installing" | "creating" | "success";
+
+interface BoardInstallState {
+  installed_targets: string[];
+  espup_installed: boolean;
+}
 
 export function ProjectWizard() {
   const { isWizardOpen, setWizardOpen, setActiveProject, addLog, selectedBoard } = useIDEStore();
 
   const [projectName, setProjectName] = useState("");
   const [parentDir, setParentDir] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>(selectedBoard || "standard");
+  const [step, setStep] = useState<Step>("form");
   const [errorMsg, setErrorMsg] = useState("");
+  const [installLog, setInstallLog] = useState<string[]>([]);
+  const [installDone, setInstallDone] = useState(false);
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  // Resolve the active board definition from whichever template was chosen
+  const activeBoardDef = selectedTemplate !== "standard"
+    ? BOARDS.find(b => b.id === selectedTemplate) ?? null
+    : null;
+  const isEmbedded = !!activeBoardDef;
+
+  useEffect(() => {
+    if (!isWizardOpen) {
+      setStep("form");
+      setProjectName("");
+      setParentDir("");
+      setErrorMsg("");
+      setInstallLog([]);
+      setInstallDone(false);
+      // Re-sync template to current board on re-open
+      setSelectedTemplate(selectedBoard || "standard");
+    }
+  }, [isWizardOpen, selectedBoard]);
+
+  // Auto-scroll log
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [installLog]);
 
   if (!isWizardOpen) return null;
 
   const handlePickDirectory = async () => {
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: "Select Parent Folder for New Project"
-      });
-      if (selected && typeof selected === 'string') {
-        setParentDir(selected);
-        setErrorMsg("");
-      }
-    } catch (e) {
-      console.error(e);
-    }
+      const selected = await open({ directory: true, multiple: false, title: "Select Parent Folder" });
+      if (selected && typeof selected === "string") { setParentDir(selected); setErrorMsg(""); }
+    } catch (e) { console.error(e); }
   };
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Transform to standard Rust project naming: lowercase, replace spaces with hyphens
-    const val = e.target.value.toLowerCase().replace(/\s+/g, '-');
-    setProjectName(val);
+    setProjectName(e.target.value.toLowerCase().replace(/\s+/g, "-"));
   };
 
-  const handleCreate = async () => {
+  const validateForm = (): string | null => {
+    if (!projectName.trim()) return "Project name is required.";
+    if (!parentDir) return "Please select a destination folder.";
+    if (!/^[a-z0-9_-]+$/.test(projectName)) return "Only lowercase, numbers, hyphens, and underscores allowed.";
+    return null;
+  };
+
+  const handleFormSubmit = async () => {
+    const err = validateForm();
+    if (err) { setErrorMsg(err); return; }
     setErrorMsg("");
-    if (!projectName.trim()) {
-      setErrorMsg("Project name is required.");
-      return;
-    }
-    if (!parentDir) {
-      setErrorMsg("Please select a destination folder.");
-      return;
-    }
-    if (!/^[a-z0-9_-]+$/.test(projectName)) {
-      setErrorMsg("Invalid name. Use only lowercase letters, numbers, hyphens, and underscores.");
-      return;
-    }
-
-    setIsLoading(true);
+    if (!isEmbedded) { await doCreate(); return; }
     try {
-      const templateId = selectedBoard || "standard";
-      addLog(`Creating new project '${projectName}' via ${templateId}...`);
-      
-      const newProjectPath = await invoke<string>("create_new_project", {
-        name: projectName,
-        parentDir: parentDir,
-        template: templateId
-      });
+      const state = await invoke<BoardInstallState>("check_installed_targets");
+      const ok = state.installed_targets.includes(activeBoardDef!.target) ||
+        (activeBoardDef!.installMethod === "espup" && state.espup_installed);
+      if (ok) await doCreate(); else setStep("toolchain-warning");
+    } catch { setStep("toolchain-warning"); }
+  };
 
-      addLog(`Project ${projectName} created successfully at ${newProjectPath}`);
-      setActiveProject(newProjectPath, projectName);
-      
-      // Close wizard after success
-      handleClose();
+  const doCreate = async () => {
+    setStep("creating");
+    try {
+      addLog(`Creating project '${projectName}' (${selectedTemplate})...`);
+      const path = await invoke<string>("create_new_project", { name: projectName, parentDir, template: selectedTemplate });
+      addLog(`✓ Project '${projectName}' created at ${path}`);
+      setActiveProject(path, projectName);
+      setStep("success");
     } catch (e) {
       setErrorMsg(String(e));
-      addLog(`[Error] Failed to create project: ${e}`);
-    } finally {
-      setIsLoading(false);
+      addLog(`[Error] ${e}`);
+      setStep("form");
     }
   };
 
-  const handleClose = () => {
-    setWizardOpen(false);
-    setProjectName("");
-    setParentDir("");
-    setErrorMsg("");
+  const handleInstallAndCreate = async () => {
+    if (!activeBoardDef) return;
+    setStep("installing");
+    setInstallLog([]);
+    setInstallDone(false);
+    const unlisten = await listen<{ line: string }>("install-progress", (ev) => {
+      setInstallLog(prev => [...prev, ev.payload.line]);
+    });
+    try {
+      await invoke("install_board_target", { target: activeBoardDef.target, method: activeBoardDef.installMethod, espupTargets: activeBoardDef.espupTargets ?? null });
+      setInstallLog(prev => [...prev, `✓ ${activeBoardDef.name} installed successfully!`]);
+      setInstallDone(true);
+      addLog(`Board ${activeBoardDef.name} installed.`);
+    } catch (e) {
+      setInstallLog(prev => [...prev, `✗ Installation failed: ${e}`]);
+    } finally { unlisten(); }
   };
 
-  const boardDef = selectedBoard ? BOARDS.find(b => b.id === selectedBoard) : null;
+  const handleClose = () => setWizardOpen(false);
 
-  // Determine what template tag to show based on system sync
-  const syncedTemplateDisplay = boardDef 
-    ? `${boardDef.name} (${boardDef.chip})`
-    : (selectedBoard || "Standard Rust Binary (No board selected)");
+  // ── STEP: form ──────────────────────────────────────────────────────────
+  if (step === "form") {
+    const nameInvalid = projectName.length > 0 && !/^[a-z0-9_-]*$/.test(projectName);
 
-  return (
-    <>
-      <div className="bm-dialog-overlay" onClick={handleClose} />
-      
-      <div className="bm-dialog" style={{ width: '450px' }}>
-        <div className="bm-dialog-header">
-          <h2 className="bm-dialog-title">Create New Project</h2>
-          <button className="bm-dialog-close" onClick={handleClose}>
-            <CloseOutlinedIcon sx={{ fontSize: 20 }} />
-          </button>
-        </div>
-
-        <div className="bm-dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
-          {/* Project Name */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '13px', color: 'var(--ide-text-faint)' }}>Project Name</label>
-            <input 
-              type="text" 
-              className="bm-search" 
-              placeholder="e.g. my-awesome-firmware"
-              value={projectName}
-              onChange={handleNameChange}
-              style={{ width: '100%', borderRadius: '4px' }}
-            />
-            {!/^[a-z0-9_-]*$/.test(projectName) && projectName.length > 0 && (
-              <div style={{ fontSize: '11px', color: 'var(--danger)' }}>
-                Only lowercase, numbers, hyphens, and underscores allowed.
-              </div>
-            )}
+    return (
+      <>
+        <div className="pw-overlay" onClick={handleClose} />
+        <div className="pw-dialog">
+          <div className="pw-header">
+            <span className="pw-title">Create New Project</span>
+            <button className="pw-close" onClick={handleClose}><CloseOutlinedIcon sx={{ fontSize: 18 }} /></button>
           </div>
 
-          {/* Location */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '13px', color: 'var(--ide-text-faint)' }}>Location</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input 
-                type="text" 
-                className="bm-search" 
-                placeholder="Select a folder..."
-                value={parentDir}
-                readOnly
-                style={{ flex: 1, borderRadius: '4px', cursor: 'default', color: 'var(--ide-text)' }}
-              />
-              <button 
-                className="bm-btn-ghost" 
-                title="Browse..."
-                onClick={handlePickDirectory}
-                style={{ 
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                  padding: '0 8px', borderRadius: '4px', border: '1px solid var(--ide-border)'
-                }}
+          <div className="pw-body">
+            {/* Name */}
+            <div className="pw-field">
+              <label className="pw-label">Project Name</label>
+              <input className="bm-search" type="text" placeholder="e.g. my-blink-firmware"
+                value={projectName} onChange={handleNameChange}
+                style={{ width: "100%", borderRadius: "5px" }} />
+              {nameInvalid && <span className="pw-name-error">Only lowercase, numbers, hyphens, and underscores allowed.</span>}
+            </div>
+
+            {/* Location */}
+            <div className="pw-field">
+              <label className="pw-label">Location</label>
+              <div className="pw-input-row">
+                <input className="bm-search" type="text" placeholder="Select a folder..."
+                  value={parentDir} readOnly style={{ flex: 1, borderRadius: "5px", cursor: "default" }} />
+                <button className="pw-browse-btn" onClick={handlePickDirectory} title="Browse...">
+                  <FolderOpenOutlinedIcon sx={{ fontSize: 17 }} />
+                </button>
+              </div>
+              {parentDir && projectName && !nameInvalid && (
+                <span className="pw-path-hint">{parentDir}/{projectName}</span>
+              )}
+            </div>
+
+            {/* Target Platform */}
+            <div className="pw-field">
+              <label className="pw-label">
+                <span>Target Platform</span>
+                {selectedBoard && selectedTemplate === selectedBoard && (
+                  <span className="pw-badge">Board-Synced</span>
+                )}
+              </label>
+              <select
+                className="bm-version-select"
+                value={selectedTemplate}
+                onChange={e => setSelectedTemplate(e.target.value)}
+                style={{ width: "100%", height: "32px", fontSize: "12px", padding: "0 8px", borderRadius: "5px" }}
               >
-                <FolderOpenOutlinedIcon sx={{ fontSize: 18, color: 'var(--ide-teal)' }} />
+                <option value="standard">Standard Rust Binary</option>
+                {BOARDS.map(b => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} — {b.chip} ({b.arch.toUpperCase()})
+                  </option>
+                ))}
+              </select>
+              {activeBoardDef && (
+                <span className="pw-hint">
+                  Target: <code style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{activeBoardDef.target}</code>
+                </span>
+              )}
+            </div>
+
+            {errorMsg && <div className="pw-error">{errorMsg}</div>}
+          </div>
+
+          <div className="pw-footer">
+            <button className="pw-btn pw-btn--ghost" onClick={handleClose}>Cancel</button>
+            <button className="pw-btn pw-btn--primary" onClick={handleFormSubmit}
+              disabled={!projectName || !parentDir || nameInvalid}>
+              Create Project
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ── STEP: toolchain-warning ─────────────────────────────────────────────
+  if (step === "toolchain-warning") {
+    return (
+      <>
+        <div className="pw-overlay" />
+        <div className="pw-dialog">
+          <div className="pw-header">
+            <span className="pw-title">
+              <WarningAmberOutlinedIcon sx={{ fontSize: 18, color: "#e5c07b" }} />
+              Toolchain Required
+            </span>
+          </div>
+
+          <div className="pw-body">
+            <div className="pw-warn-box">
+              <div className="pw-warn-title">
+                <WarningAmberOutlinedIcon sx={{ fontSize: 15 }} />
+                Board support not installed
+              </div>
+              <div className="pw-warn-body">
+                The <strong>{activeBoardDef?.name}</strong> template requires the <strong>{activeBoardDef?.target}</strong> toolchain.
+                <br /><br />
+                Without it, <code>cargo build</code> will fail immediately.
+              </div>
+            </div>
+            <span className="pw-hint">Install it now via Rusteon, or create the project and install later.</span>
+          </div>
+
+          <div className="pw-footer">
+            <button className="pw-btn pw-btn--ghost" onClick={handleClose}>Cancel</button>
+            <button className="pw-btn pw-btn--warn" onClick={doCreate}>Create Anyway</button>
+            <button className="pw-btn pw-btn--primary" onClick={handleInstallAndCreate}>
+              Install &amp; Create
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ── STEP: installing ────────────────────────────────────────────────────
+  if (step === "installing") {
+    return (
+      <>
+        <div className="pw-overlay" />
+        <div className="pw-dialog">
+          <div className="pw-header">
+            <span className="pw-title">Installing {activeBoardDef?.name} toolchain...</span>
+          </div>
+          <div className="pw-body">
+            <div className="pw-log">
+              {installLog.map((line, i) => (
+                <div key={i} className={`pw-log-line${line.startsWith("✓") ? " pw-log-line--ok" : line.startsWith("✗") ? " pw-log-line--err" : ""}`}>
+                  {line}
+                </div>
+              ))}
+              {!installDone && <div className="pw-log-cursor">▋</div>}
+              <div ref={logEndRef} />
+            </div>
+          </div>
+          {installDone && (
+            <div className="pw-footer">
+              <button className="pw-btn pw-btn--primary" onClick={doCreate}>
+                <CheckCircleOutlineIcon sx={{ fontSize: 15 }} />
+                Create Project
               </button>
             </div>
-            {parentDir && projectName && (
-              <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
-                Will create: {parentDir}/{projectName}
-              </div>
-            )}
-          </div>
-
-          {/* Template Info (Synced) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '13px', color: 'var(--ide-text-faint)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>Target Platform</span>
-              <span style={{ fontSize: '10px', background: 'var(--ide-teal)', color: '#000', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>AUTO-SYNCED</span>
-            </label>
-            <div style={{ 
-              padding: '8px 12px', 
-              background: 'var(--ide-bg-active)', 
-              border: '1px solid var(--ide-border)', 
-              borderRadius: '4px',
-              fontSize: '13px',
-              color: 'var(--ide-text)'
-            }}>
-              {syncedTemplateDisplay}
-            </div>
-            <div style={{ fontSize: '11px', color: '#666' }}>
-              Changes to match the board selected in the bottom status bar.
-            </div>
-          </div>
-
-          {errorMsg && (
-            <div className="bm-error-msg" style={{ 
-              marginTop: '8px', 
-              background: 'rgba(255, 60, 60, 0.1)', 
-              color: 'var(--danger)', 
-              padding: '8px 12px', 
-              borderRadius: '4px', 
-              border: '1px solid rgba(255,60,60,0.3)',
-              fontSize: '13px',
-              whiteSpace: 'pre-wrap'
-            }}>
-              {errorMsg}
-            </div>
           )}
-
         </div>
+      </>
+    );
+  }
 
-        <div className="bm-dialog-footer" style={{ borderTop: '1px solid var(--ide-border)', padding: '16px', display: 'flex', justifyContent: 'flex-end', gap: '8px', background: 'var(--ide-bg)' }}>
-          <button 
-            className="bm-btn-ghost" 
-            onClick={handleClose}
-            disabled={isLoading}
-            style={{ padding: '6px 16px', borderRadius: '4px', fontSize: '13px', color: 'var(--ide-text)', border: '1px solid var(--ide-border)' }}
-          >
-            Cancel
-          </button>
-          
-          <button 
-            className="bm-btn" 
-            onClick={handleCreate}
-            disabled={isLoading || !projectName || !parentDir || !/^[a-z0-9_-]+$/.test(projectName)}
-            style={{ 
-              padding: '6px 16px', 
-              borderRadius: '4px', 
-              fontSize: '13px', 
-              background: 'var(--ide-teal)',
-              color: '#000',
-              fontWeight: 500,
-              border: 'none',
-              cursor: (isLoading || !projectName || !parentDir || !/^[a-z0-9_-]+$/.test(projectName)) ? 'not-allowed' : 'pointer',
-              opacity: (isLoading || !projectName || !parentDir || !/^[a-z0-9_-]+$/.test(projectName)) ? 0.5 : 1
-            }}
-          >
-            {isLoading ? "Creating..." : "Create Project"}
-          </button>
+  // ── STEP: creating ──────────────────────────────────────────────────────
+  if (step === "creating") {
+    return (
+      <>
+        <div className="pw-overlay" />
+        <div className="pw-dialog">
+          <div className="pw-header">
+            <span className="pw-title">Creating project...</span>
+          </div>
+          <div className="pw-creating">
+            <div className="pw-spinner" />
+            Running <code style={{ fontSize: 11 }}>cargo new {projectName}</code>
+          </div>
         </div>
-      </div>
-    </>
-  );
+      </>
+    );
+  }
+
+  // ── STEP: success ───────────────────────────────────────────────────────
+  if (step === "success") {
+    return (
+      <>
+        <div className="pw-overlay" onClick={handleClose} />
+        <div className="pw-dialog" style={{ width: "400px" }}>
+          <div className="pw-header">
+            <span className="pw-title">Project Created!</span>
+            <button className="pw-close" onClick={handleClose}><CloseOutlinedIcon sx={{ fontSize: 18 }} /></button>
+          </div>
+          <div className="pw-body" style={{ alignItems: "center", textAlign: "center", padding: "32px 16px" }}>
+            <CheckCircleOutlineIcon sx={{ fontSize: 56, color: "var(--ide-teal)", marginBottom: "8px" }} />
+            <div style={{ fontSize: "15px", fontWeight: 600, color: "var(--ide-text)" }}>
+              {projectName} is ready.
+            </div>
+            <div style={{ fontSize: "12px", color: "var(--ide-text-faint)", marginTop: "12px", maxWidth: "90%" }}>
+              Successfully generated at:
+              <br/>
+              <code style={{ fontSize: "11px", color: "var(--ide-text)", background: "var(--ide-bg)", padding: "4px 8px", borderRadius: "5px", display: "inline-block", marginTop: "6px", wordBreak: "break-all", border: "1px solid var(--ide-border-light)" }}>
+                {parentDir}/{projectName}
+              </code>
+            </div>
+          </div>
+          <div className="pw-footer">
+            <button className="pw-btn pw-btn--primary" onClick={handleClose} style={{ width: "100%", justifyContent: "center", padding: "8px" }}>
+              Start Coding
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return null;
 }

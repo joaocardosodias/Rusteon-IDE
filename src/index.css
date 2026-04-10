@@ -1387,3 +1387,278 @@ select {
   line-height: 1.4;
   word-break: break-word;
 }
+
+/* ── Project Wizard ──────────────────────────────────────────────────────── */
+
+.pw-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 200;
+  backdrop-filter: blur(2px);
+}
+
+.pw-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 201;
+  width: 460px;
+  background: var(--ide-surface);
+  border: 1px solid var(--ide-border-light);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: inherit;
+}
+
+.pw-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--ide-border);
+  background: var(--ide-toolbar);
+  flex-shrink: 0;
+}
+
+.pw-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ide-text);
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pw-close {
+  background: none;
+  border: none;
+  color: var(--ide-text-faint);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.pw-close:hover { color: var(--ide-text); background: rgba(255,255,255,0.06); }
+
+.pw-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.pw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pw-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ide-text-muted);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pw-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: var(--ide-teal);
+  color: #000;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.pw-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+.pw-display {
+  padding: 7px 10px;
+  background: var(--ide-bg);
+  border: 1px solid var(--ide-border-light);
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--ide-text);
+  line-height: 1.4;
+}
+
+.pw-hint {
+  font-size: 10.5px;
+  color: var(--ide-text-faint);
+  line-height: 1.4;
+}
+
+.pw-path-hint {
+  font-size: 10.5px;
+  color: var(--ide-text-faint);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.pw-error {
+  font-size: 11px;
+  color: #e06c75;
+  background: rgba(224, 108, 117, 0.08);
+  border: 1px solid rgba(224, 108, 117, 0.2);
+  padding: 7px 10px;
+  border-radius: 5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.pw-name-error {
+  font-size: 10.5px;
+  color: #e06c75;
+}
+
+.pw-warn-box {
+  padding: 12px;
+  background: rgba(229, 192, 123, 0.06);
+  border: 1px solid rgba(229, 192, 123, 0.25);
+  border-radius: 6px;
+}
+.pw-warn-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e5c07b;
+  margin-bottom: 7px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pw-warn-body {
+  font-size: 12px;
+  color: var(--ide-text-muted);
+  line-height: 1.55;
+}
+.pw-warn-body strong { color: var(--ide-text); }
+.pw-warn-body code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  background: var(--ide-bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* Log terminal area */
+.pw-log {
+  background: var(--ide-bg);
+  border: 1px solid var(--ide-border-light);
+  border-radius: 5px;
+  padding: 10px 12px;
+  height: 190px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pw-log-line { color: var(--ide-text-faint); }
+.pw-log-line--ok { color: var(--syn-str); }
+.pw-log-line--err { color: var(--syn-macro); }
+.pw-log-cursor { color: #444; animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Creating spinner */
+.pw-creating {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 32px 16px;
+  color: var(--ide-text-muted);
+  font-size: 12px;
+}
+.pw-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--ide-border-light);
+  border-top-color: var(--ide-teal);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Footer */
+.pw-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ide-border);
+  background: var(--ide-toolbar);
+  flex-shrink: 0;
+}
+
+/* Wizard buttons */
+.pw-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background var(--transition-fast), opacity var(--transition-fast), transform var(--transition-fast);
+  outline: none;
+}
+.pw-btn:active:not(:disabled) { transform: scale(0.97); }
+.pw-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.pw-btn--primary {
+  background: var(--ide-teal);
+  color: #000;
+}
+.pw-btn--primary:hover:not(:disabled) { background: var(--ide-teal-hover); }
+
+.pw-btn--ghost {
+  background: transparent;
+  color: var(--ide-text-muted);
+  border: 1px solid var(--ide-border-light);
+}
+.pw-btn--ghost:hover:not(:disabled) { color: var(--ide-text); background: rgba(255,255,255,0.04); }
+
+.pw-btn--warn {
+  background: rgba(229, 192, 123, 0.1);
+  color: #e5c07b;
+  border: 1px solid rgba(229, 192, 123, 0.3);
+}
+.pw-btn--warn:hover:not(:disabled) { background: rgba(229, 192, 123, 0.18); }
+
+/* Browse folder button */
+.pw-browse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  background: var(--ide-toolbar);
+  border: 1px solid var(--ide-border-light);
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--ide-teal);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  flex-shrink: 0;
+}
+.pw-browse-btn:hover { background: rgba(0, 151, 157, 0.08); border-color: var(--ide-teal); }
