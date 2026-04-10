@@ -17,7 +17,7 @@ interface BoardInstallState {
 }
 
 export function ProjectWizard() {
-  const { isWizardOpen, setWizardOpen, setActiveProject, addLog, selectedBoard } = useIDEStore();
+  const { isWizardOpen, setWizardOpen, setActiveProject, addLog, selectedBoard, addOpenTab, setActiveFile, setContent } = useIDEStore();
 
   const [projectName, setProjectName] = useState("");
   const [parentDir, setParentDir] = useState("");
@@ -92,6 +92,15 @@ export function ProjectWizard() {
       const path = await invoke<string>("create_new_project", { name: projectName, parentDir, template: selectedTemplate });
       addLog(`✓ Project '${projectName}' created at ${path}`);
       setActiveProject(path, projectName);
+      // Persist and auto-open main.rs
+      try { await invoke("save_last_project", { path, name: projectName }); } catch { /* ok */ }
+      const mainPath = `${path}/src/main.rs`;
+      try {
+        const text = await invoke<string>("read_file_content", { path: mainPath });
+        setActiveFile(mainPath);
+        setContent(text);
+        addOpenTab({ path: mainPath, name: "main.rs" });
+      } catch { /* no main.rs yet */ }
       setStep("success");
     } catch (e) {
       setErrorMsg(String(e));

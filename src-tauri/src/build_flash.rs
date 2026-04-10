@@ -193,7 +193,7 @@ pub async fn flash_firmware(
 
     let mut actual_cmd = if flash_tool.to_lowercase().contains("espflash") {
         let mut c = Command::new("espflash");
-        c.arg("flash").arg("--monitor");
+        c.arg("flash"); // No --monitor: let the process finish cleanly
         if let Some(ref p) = port {
             if p.to_lowercase() != "auto" && !p.is_empty() {
                 c.arg("--port").arg(p);

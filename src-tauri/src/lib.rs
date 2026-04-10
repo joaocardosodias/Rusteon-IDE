@@ -3,6 +3,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tauri::{Emitter, Manager};
+pub mod serial;
 
 mod project;
 mod library;
@@ -343,6 +344,10 @@ pub fn run() {
             app.manage(build_flash::ProcessState {
                 child: std::sync::Mutex::new(None),
             });
+            app.manage(serial::SerialState {
+                port: std::sync::Arc::new(std::sync::Mutex::new(None)),
+                active: std::sync::Arc::new(std::sync::Mutex::new(false)),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -355,6 +360,8 @@ pub fn run() {
             project::read_file_content,
             project::save_file,
             project::create_new_project,
+            project::save_last_project,
+            project::load_last_project,
             library::get_project_libraries,
             library::add_library_to_project,
             library::remove_library_from_project,
@@ -365,6 +372,9 @@ pub fn run() {
             check_installed_targets,
             install_board_target,
             remove_board_target,
+            serial::start_serial,
+            serial::stop_serial,
+            serial::send_serial,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

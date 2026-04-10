@@ -19,6 +19,8 @@ export interface BoardSelectorState {
   // Selected values
   selectedPort: string | null;
   selectedBoard: string | null;
+  serialBaudRate: number;
+  serialConnected: boolean;
   
   // Actions
   setSerialDialogOpen: (open: boolean) => void;
@@ -26,4 +28,6 @@ export interface BoardSelectorState {
   setBoardPortDialogOpen: (open: boolean) => void;
   setSelectedPort: (port: string | null) => void;
   setSelectedBoard: (board: string | null) => void;
+  setSerialBaudRate: (baud: number) => void;
+  setSerialConnected: (connected: boolean) => void;
 }
