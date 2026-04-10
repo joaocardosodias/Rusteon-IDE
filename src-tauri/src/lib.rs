@@ -2,10 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 mod project;
 mod library;
+mod diagnostics;
+
+mod build_flash;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,16 +93,6 @@ fn save_install_log(target: &str, content: &str) -> Result<(), String> {
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
-fn build_project() -> String {
-    "Building... (Rust Stub)".into()
-}
-
-#[tauri::command]
-fn flash_firmware() -> String {
-    "Flashing... (Rust Stub)".into()
 }
 
 #[tauri::command]
@@ -346,17 +339,29 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            app.manage(build_flash::ProcessState {
+                child: std::sync::Mutex::new(None),
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
-            build_project,
-            flash_firmware,
+            build_flash::build_project,
+            build_flash::flash_firmware,
+            build_flash::cancel_process,
             get_serial_ports,
             project::read_dir_recursive,
             project::read_file_content,
+            project::save_file,
             project::create_new_project,
             library::get_project_libraries,
             library::add_library_to_project,
             library::remove_library_from_project,
+            diagnostics::check_project,
+            diagnostics::get_crate_features,
+            diagnostics::add_feature_to_cargo,
+            diagnostics::add_crate_to_cargo,
             check_installed_targets,
             install_board_target,
             remove_board_target,

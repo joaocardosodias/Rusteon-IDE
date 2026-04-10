@@ -1,4 +1,5 @@
 [dependencies]
-esp-backtrace = { version = "0.14.2", features = ["esp-println", "panic-handler", "exception-handler", "esp32s3"] }
-esp-println = { version = "0.12.0", features = ["esp32s3"] }
-esp-hal = { version = "0.21.1", features = ["esp32s3"] }
+esp-backtrace = { version = "0.18.1", features = ["println", "panic-handler", "esp32s3"] }
+esp-println = { version = "0.16.1", features = ["esp32s3"] }
+esp-hal = { version = "1.0.0", features = ["esp32s3"] }
+esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32s3"] }

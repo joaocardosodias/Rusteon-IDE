@@ -2,20 +2,28 @@
 #![no_main]
 
 use esp_backtrace as _;
+use esp_hal::{
+    main,
+    time::{Duration, Instant},
+};
 use esp_println::println;
-use esp_hal::{clock::ClockControl, peripherals::Peripherals, prelude::*, Delay};
 
-#[entry]
+// App Descriptor exigido pelo espflash 3.x
+esp_bootloader_esp_idf::esp_app_desc!();
+
+#[main]
 fn main() -> ! {
-    let peripherals = Peripherals::take();
-    let system = peripherals.SYSTEM.split();
-    let clocks = ClockControl::max(system.clock_control).freeze();
-    let mut delay = Delay::new(&clocks);
+    let _peripherals = esp_hal::init(esp_hal::Config::default());
 
-    println!("Hello Rusteon from esp32s2!");
+    println!("Hello from Rusteon IDE!");
+
+    let mut contador: u32 = 0;
 
     loop {
-        println!("Tick");
-        delay.delay_ms(1000u32);
+        println!("Tick {}", contador);
+        contador = contador.wrapping_add(1);
+
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(1000) {}
     }
 }

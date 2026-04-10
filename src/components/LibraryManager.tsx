@@ -9,7 +9,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined';
 import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
-import SearchIcon from '@mui/icons-material/Search';
+import SearchIcon from '@mui/icons-material/Search';import BuildIcon from '@mui/icons-material/Build';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 
 // Curated libs shown by default
 const curatedLibs = [
@@ -35,9 +36,9 @@ interface InstalledLib {
 }
 
 export function LibraryManager() {
-  const { activeProjectPath, addLog } = useIDEStore();
+  const { activeProjectPath, addLog, featureDiagnostics, setFeatureDiagnostics } = useIDEStore();
 
-  const [activeTab, setActiveTab] = useState<"curated" | "search" | "installed">("curated");
+  const [activeTab, setActiveTab] = useState<"curated" | "search" | "installed" | "diagnostics">("curated");
   const [installedLibs, setInstalledLibs] = useState<InstalledLib[]>([]);
   const [libStatus, setLibStatus] = useState<Record<string, LibStatus>>({});
   const [libErrors, setLibErrors] = useState<Record<string, string>>({});
@@ -268,7 +269,7 @@ export function LibraryManager() {
 
       {/* Tabs */}
       <div className="bm-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--ide-border)', margin: '0 12px 2px' }}>
-        {(['curated', 'search', 'installed'] as const).map(tab => (
+        {(['curated', 'search', 'installed', 'diagnostics'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -287,6 +288,14 @@ export function LibraryManager() {
             }}
           >
             {tab}
+            {tab === 'diagnostics' && featureDiagnostics.length > 0 && (
+              <span style={{
+                marginLeft: '4px', background: '#ff3a3a', color: '#fff',
+                padding: '2px 6px', borderRadius: '10px', fontSize: '9px', fontWeight: 'bold'
+              }}>
+                {featureDiagnostics.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -567,6 +576,91 @@ export function LibraryManager() {
           </>
         )}
 
+        {/* DIAGNOSTICS */}
+        {activeTab === "diagnostics" && (
+          <div className="bm-diagnostics" style={{ padding: '8px 12px', flex: 1, overflowY: 'auto' }}>
+            {featureDiagnostics.length === 0 ? (
+              <div className="bm-empty">
+                <CheckCircleIcon sx={{ fontSize: 32, opacity: 0.3, color: 'var(--ide-teal)', mb: 1 }} />
+                <p>No missing features detected.</p>
+                <div style={{ fontSize: '11px', color: 'var(--ide-text-faint)', marginTop: '8px' }}>
+                  Cargo will analyze your code when you Build.
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="bm-vendor-group">
+                   <button className="bm-vendor-header" style={{ cursor: 'default', background: 'rgba(255, 58, 58, 0.05)' }}>
+                    <span className="bm-vendor-name" style={{ color: '#ff3a3a' }}>Missing Features Detected</span>
+                    <span className="bm-vendor-count" style={{ background: '#ff3a3a' }}>{featureDiagnostics.length}</span>
+                  </button>
+                  {featureDiagnostics.map((diag, idx) => {
+                    const isMissingCrate = diag.missing_feature === "";
+                    
+                    return (
+                    <div key={idx} className="bm-card" style={{ borderLeft: '3px solid #ff3a3a' }}>
+                      <div className="bm-card-header">
+                        <BuildIcon sx={{ fontSize: 18, color: '#ff3a3a', flexShrink: 0 }} />
+                        <div className="bm-card-info">
+                          <div className="bm-card-name" style={{ color: isMissingCrate ? '#ff3a3a' : 'inherit' }}>
+                            {isMissingCrate ? `Missing Crate: ${diag.crate_name}` : diag.crate_name}
+                          </div>
+                          <div className="bm-card-meta">
+                            {!isMissingCrate && (
+                              <span className="bm-arch-badge" style={{ color: '#ff3a3a', borderColor: '#ff3a3a', fontWeight: 'bold' }}>
+                                + {diag.missing_feature}
+                              </span>
+                            )}
+                             <span className="bm-card-target" style={{ marginLeft: isMissingCrate ? 0 : '6px' }}>{diag.file}:{diag.line}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bm-card-desc" style={{ fontStyle: 'italic', marginTop: '6px' }}>
+                        "{diag.help}"
+                      </div>
+
+                      <div className="bm-card-actions" style={{ marginTop: '8px' }}>
+                        <button
+                          className="bm-btn bm-btn--install"
+                          style={{ background: 'var(--ide-teal)' }}
+                          onClick={async () => {
+                            if (!activeProjectPath) return;
+                            try {
+                              if (isMissingCrate) {
+                                await invoke("add_crate_to_cargo", {
+                                  projectPath: activeProjectPath,
+                                  crateName: diag.crate_name
+                                });
+                                addLog(`✓ Fixed: Installed crate '${diag.crate_name}'`);
+                              } else {
+                                await invoke("add_feature_to_cargo", {
+                                  projectPath: activeProjectPath,
+                                  crateName: diag.crate_name,
+                                  feature: diag.missing_feature
+                                });
+                                addLog(`✓ Fixed: Added feature '${diag.missing_feature}' to ${diag.crate_name}`);
+                              }
+                              // Remove from list
+                              setFeatureDiagnostics(featureDiagnostics.filter((_, i) => i !== idx));
+                              // Auto refresh installed tab quietly
+                              fetchInstalled();
+                            } catch (e) {
+                              addLog(`[Error] Failed to fix: ${e}`);
+                            }
+                          }}
+                        >
+                          <AutoFixHighIcon sx={{ fontSize: 14 }} />
+                          FIX
+                        </button>
+                      </div>
+                    </div>
+                  )})}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

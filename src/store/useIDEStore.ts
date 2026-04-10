@@ -1,16 +1,34 @@
 import { create } from 'zustand';
 import { BoardSelectorState } from '../types/board-selector';
 
+export interface OpenTab {
+  path: string;
+  name: string;
+}
+
+export interface FeatureDiagnostic {
+  crate_name: string;
+  missing_feature: string;
+  file: string;
+  line: number;
+  help: string;
+}
+
 interface EditorState {
   activeFile: string | null;
   content: string;
+  openTabs: OpenTab[];
   logs: string[];
   isBuilding: boolean;
+  featureDiagnostics: FeatureDiagnostic[];
   setActiveFile: (file: string | null) => void;
   setContent: (content: string) => void;
+  addOpenTab: (tab: OpenTab) => void;
+  removeOpenTab: (path: string) => void;
   addLog: (log: string) => void;
   clearLogs: () => void;
   setIsBuilding: (status: boolean) => void;
+  setFeatureDiagnostics: (diags: FeatureDiagnostic[]) => void;
 }
 
 interface ProjectState {
@@ -22,15 +40,30 @@ interface ProjectState {
 }
 
 export const useIDEStore = create<EditorState & BoardSelectorState & ProjectState>((set) => ({
-  activeFile: 'main.rs',
-  content: '// Bem-vindo ao Rusteon IDE\nfn main() {\n    println!("Olá, Rust Embarcado!");\n}',
+  activeFile: null,
+  content: '// Bem-vindo ao Rusteon IDE\n// Abra um projeto para começar',
+  openTabs: [],
   logs: ['Rusteon IDE inicializada...'],
   isBuilding: false,
+  featureDiagnostics: [],
   setActiveFile: (file) => set({ activeFile: file }),
   setContent: (content) => set({ content }),
+  addOpenTab: (tab) => set((state) => {
+    if (state.openTabs.some(t => t.path === tab.path)) return {};
+    return { openTabs: [...state.openTabs, tab] };
+  }),
+  removeOpenTab: (path) => set((state) => {
+    const newTabs = state.openTabs.filter(t => t.path !== path);
+    if (state.activeFile === path) {
+      const newActive = newTabs.length > 0 ? newTabs[newTabs.length - 1].path : null;
+      return { openTabs: newTabs, activeFile: newActive };
+    }
+    return { openTabs: newTabs };
+  }),
   addLog: (log) => set((state) => ({ logs: [...state.logs, `[${new Date().toLocaleTimeString()}] ${log}`] })),
   clearLogs: () => set({ logs: [] }),
   setIsBuilding: (status) => set({ isBuilding: status }),
+  setFeatureDiagnostics: (diags) => set({ featureDiagnostics: diags }),
   
   // Project state
   activeProjectPath: null,
