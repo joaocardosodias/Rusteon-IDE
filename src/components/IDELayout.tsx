@@ -30,10 +30,28 @@ import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import CloseOutlinedIcon from "@mui/icons-material/CloseOutlined";
+import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import StopIcon from "@mui/icons-material/Stop";
+import SettingsEthernetIcon from "@mui/icons-material/SettingsEthernet";
+import KeyboardDoubleArrowDownIcon from "@mui/icons-material/KeyboardDoubleArrowDown";
+import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import ClearAllIcon from "@mui/icons-material/ClearAll";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 
 // ─── Log line types ───────────────────────────────────────────────────────────
 type BTab = "out" | "serial" | "errors";
-type LogLine = { text: string; type: "ok" | "err" | "warn" | "dim" | "prompt" | "plain" };
+type LogLine = { text: string; type: "ok" | "err" | "warn" | "dim" | "prompt" | "plain"; timestamp?: string };
+
+function logColor(type: LogLine["type"]) {
+  if (type === "ok") return "var(--syn-str)";
+  if (type === "err") return "var(--ide-err)";
+  if (type === "warn") return "var(--ide-warn)";
+  if (type === "dim") return "var(--ide-text-faint)";
+  if (type === "prompt") return "var(--syn-fn)";
+  return "var(--ide-text)";
+}
 
 // ─── Main IDE Layout ─────────────────────────────────────────────────────────
 export function IDELayout() {
@@ -47,13 +65,16 @@ export function IDELayout() {
   const [serialLines, setSerialLines] = useState<LogLine[]>([
     { text: "── Serial Monitor ──", type: "dim" },
   ]);
-  const [serialRunning, setSerialRunning] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
   const [isFlashing, setIsFlashing] = useState(false);
   const [bottomHeight, setBottomHeight] = useState(180);
   const [isDragging, setIsDragging] = useState(false);
   const [sideWidth, setSideWidth] = useState(260);
   const [isSideDragging, setIsSideDragging] = useState(false);
+
+  // Serial Monitor UI state
+  const [autoScrollSerial, setAutoScrollSerial] = useState(true);
+  const [showTimestamps, setShowTimestamps] = useState(false);
 
   // Board selector state from Zustand
   const serialDialogOpen    = useIDEStore((state) => state.serialDialogOpen);
@@ -78,11 +99,59 @@ export function IDELayout() {
   const content = useIDEStore((state) => state.content);
   const featureDiagnostics = useIDEStore((state) => state.featureDiagnostics);
   const setFeatureDiagnostics = useIDEStore((state) => state.setFeatureDiagnostics);
+  const standardErrors = useIDEStore((state) => state.standardErrors);
+  const setStandardErrors = useIDEStore((state) => state.setStandardErrors);
+  const serialBaudRate = useIDEStore((state) => state.serialBaudRate);
+  const setSerialBaudRate = useIDEStore((state) => state.setSerialBaudRate);
+  const serialConnected = useIDEStore((state) => state.serialConnected);
+  const setSerialConnected = useIDEStore((state) => state.setSerialConnected);
 
-  const serialTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
   const serialRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const serialInputRef = useRef<HTMLInputElement>(null);
+
+  const toggleSerialConnection = async () => {
+    if (serialConnected) {
+      try {
+        await invoke("stop_serial");
+        setSerialConnected(false);
+        setSerialLines(prev => [...prev, { text: `[${new Date().toLocaleTimeString()}] Disconnected.`, type: "dim" }]);
+      } catch (e) {
+        addLog(`Error stopping serial: ${e}`);
+      }
+    } else {
+      if (!selectedPort) {
+        addLog("Please select a valid COM port first.");
+        return;
+      }
+      try {
+        const msg = await invoke<string>("start_serial", { portName: selectedPort, baudRate: serialBaudRate });
+        setSerialConnected(true);
+        setSerialLines(prev => [...prev, { text: `[${new Date().toLocaleTimeString()}] ${msg}`, type: "ok" }]);
+      } catch (e) {
+        addLog(`Serial error: ${e}`);
+        setSerialLines(prev => [...prev, { text: `[${new Date().toLocaleTimeString()}] Connection failed: ${e}`, type: "err" }]);
+      }
+    }
+  };
+
+  const handleSendSerial = async () => {
+     if (!serialInputRef.current) return;
+     const val = serialInputRef.current.value;
+     if (!val) return;
+     if (!serialConnected) {
+        addLog("Serial not connected.");
+        return;
+     }
+     try {
+       await invoke("send_serial", { data: val + "\r\n" });
+       setSerialLines(prev => [...prev, { text: `[${new Date().toLocaleTimeString()}] -> ${val}`, type: "plain" }]);
+       serialInputRef.current.value = "";
+     } catch(e) {
+       addLog(`Serial send error: ${e}`);
+     }
+  };
 
   // Dragging refs
   const dragStartY = useRef(0);
@@ -107,6 +176,30 @@ export function IDELayout() {
     if (port) setSelectedPort(port);
   };
 
+  // ── Open a project folder and auto-load main.rs ──────────────────────────
+  const openProject = async (projectPath: string, projectName: string) => {
+    setActiveProject(projectPath, projectName);
+    // Persist for next startup
+    try {
+      await invoke("save_last_project", { path: projectPath, name: projectName });
+    } catch { /* non-critical */ }
+
+    // Try to open src/main.rs automatically
+    const mainPath = `${projectPath}/src/main.rs`;
+    try {
+      const text = await invoke<string>("read_file_content", { path: mainPath });
+      setActiveFile(mainPath);
+      setContent(text);
+      // Add tab if not already open
+      const store = useIDEStore.getState();
+      if (!store.openTabs.some((t: any) => t.path === mainPath)) {
+        store.addOpenTab({ path: mainPath, name: "main.rs" });
+      }
+    } catch {
+      // No main.rs found — that's fine, just open the project
+    }
+  };
+
   const handleOpenFolder = async () => {
     try {
       const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
@@ -117,18 +210,28 @@ export function IDELayout() {
       });
       if (selected && typeof selected === "string") {
         const folderName = selected.split(/[/\\]/).pop() || "Project";
-        setActiveProject(selected, folderName);
+        await openProject(selected, folderName);
       }
     } catch (e) {
       addLog(`[Error] Dialog failed: ${e}`);
     }
   };
 
+  // Restore last project on startup
+  useEffect(() => {
+    invoke<{ path: string; name: string } | null>("load_last_project").then((last) => {
+      if (last && last.path) {
+        openProject(last.path, last.name);
+      }
+    }).catch(() => { /* no saved project */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const unlistenBuild = listen<any>("ide-build-log", (event) => {
-      let type: "plain" | "error" | "warn" | "dim" | "ok" = "plain";
+      let type: LogLine["type"] = "plain";
       const txt = event.payload.line;
-      if (txt.includes("error:") || txt.includes("error[")) type = "error";
+      if (txt.includes("error:") || txt.includes("error[")) type = "err";
       else if (txt.includes("warning:")) type = "warn";
       else if (txt.trim().startsWith("Compiling") || txt.trim().startsWith("Finished") || txt.trim().startsWith("Running")) type = "ok";
       
@@ -137,9 +240,15 @@ export function IDELayout() {
     const unlistenFlash = listen<any>("ide-flash-log", (event) => {
       setOutputLines(prev => [...prev, { text: event.payload.line, type: "plain" }]);
     });
+    const unlistenSerial = listen<any>("ide-serial-log", (event) => {
+      const now = new Date();
+      const ts = now.toLocaleTimeString('en-US', { hour12: false }) + '.' + now.getMilliseconds().toString().padStart(3, '0');
+      setSerialLines(prev => [...prev, { text: event.payload.line, type: "plain", timestamp: ts }]);
+    });
     return () => {
       unlistenBuild.then(f => f());
       unlistenFlash.then(f => f());
+      unlistenSerial.then(f => f());
     };
   }, []);
 
@@ -158,7 +267,7 @@ export function IDELayout() {
       setOutputLines(prev => [...prev, { text: `  💾 Auto-saved ${activeFile.split(/[/\\]/).pop()}`, type: "dim" }]);
       return true;
     } catch (e) {
-      setOutputLines(prev => [...prev, { text: `[Error] Auto-save failed: ${e}`, type: "error" }]);
+      setOutputLines(prev => [...prev, { text: `[Error] Auto-save failed: ${e}`, type: "err" }]);
       return false;
     }
   };
@@ -166,15 +275,24 @@ export function IDELayout() {
   const runDiagnosticsOnFailure = async () => {
     if (!activeProjectPath) return;
     try {
-      const diags = await invoke<any[]>("check_project", { projectPath: activeProjectPath });
-      if (diags && diags.length > 0) {
-        setFeatureDiagnostics(diags);
-        setOutputLines(prev => [...prev, { 
-          text: `⚠ ${diags.length} missing features detected. Check the Library Manager -> Diagnostics tab to fix them.`, 
-          type: "warn" 
-        }]);
-      } else {
-        setFeatureDiagnostics([]);
+      const diags = await invoke<any>("check_project", { projectPath: activeProjectPath });
+      if (diags) {
+        if (diags.features && diags.features.length > 0) {
+          setFeatureDiagnostics(diags.features);
+          setOutputLines(prev => [...prev, { 
+            text: `⚠ ${diags.features.length} missing features detected. Check the Library Manager -> Diagnostics tab to fix them.`, 
+            type: "warn" 
+          }]);
+        } else {
+          setFeatureDiagnostics([]);
+        }
+
+        if (diags.errors && diags.errors.length > 0) {
+          setStandardErrors(diags.errors);
+          setActiveBottomTab("errors");
+        } else {
+          setStandardErrors([]);
+        }
       }
     } catch {
       // fail silently
@@ -203,7 +321,7 @@ export function IDELayout() {
       setOutputLines(prev => [...prev, { text: `✓ ${res}`, type: "ok" }]);
       setFeatureDiagnostics([]); // clear on success
     } catch (e) {
-      setOutputLines(prev => [...prev, { text: `[Error] ${e}`, type: "error" }]);
+      setOutputLines(prev => [...prev, { text: `[Error] ${e}`, type: "err" }]);
       await runDiagnosticsOnFailure();
     } finally {
       setIsBuilding(false);
@@ -241,11 +359,27 @@ export function IDELayout() {
       });
       setOutputLines(prev => [...prev, { text: `✓ ${res}`, type: "ok" }]);
       setFeatureDiagnostics([]); // clear on success
+
+      // 4. Auto-switch to Serial Monitor and connect
+      if (selectedPort && !serialConnected) {
+        setOutputLines(prev => [...prev, {
+          text: `  📡 Opening Serial Monitor on ${selectedPort} (${serialBaudRate} baud)...`,
+          type: "dim"
+        }]);
+        setActiveBottomTab("serial");
+        try {
+          const msg = await invoke<string>("start_serial", {
+            portName: selectedPort,
+            baudRate: serialBaudRate
+          });
+          setSerialConnected(true);
+          setSerialLines(prev => [...prev, { text: `[${new Date().toLocaleTimeString()}] ${msg}`, type: "ok" }]);
+        } catch (e) {
+          setSerialLines(prev => [...prev, { text: `[${new Date().toLocaleTimeString()}] Serial auto-connect failed: ${e}`, type: "err" }]);
+        }
+      }
     } catch (e) {
-      setOutputLines(prev => [...prev, { text: `[Error] Deploy failed: ${e}`, type: "error" }]);
-      // Fallback: check if the error was a compile error masquerading as a deploy error
-      // Actually build_project fails first if it didn't compile, but probe-rs / espflash
-      // might fail compilation if used directly. We just safely run diagnostics either way.
+      setOutputLines(prev => [...prev, { text: `[Error] Deploy failed: ${e}`, type: "err" }]);
       await runDiagnosticsOnFailure();
     } finally {
       setIsBuilding(false);
@@ -266,21 +400,7 @@ export function IDELayout() {
 
   const handleSerial = () => {
     setActiveBottomTab("serial");
-    if (serialRunning) {
-      if (serialTickRef.current) clearInterval(serialTickRef.current);
-      setSerialRunning(false);
-      setSerialLines((prev) => [...prev, { text: "── Serial closed ──", type: "warn" }]);
-      return;
-    }
-    setSerialRunning(true);
-    setSerialLines((prev) => [...prev, { text: "── Serial open — 115200 ──", type: "ok" }]);
-    const msgs = ["LED on", "LED off"];
-    let i = 0;
-    serialTickRef.current = setInterval(() => {
-      const ts = new Date().toTimeString().slice(0, 8);
-      setSerialLines((prev) => [...prev, { text: `[${ts}] ${msgs[i % 2]}`, type: "plain" }]);
-      i++;
-    }, 500);
+    toggleSerialConnection();
   };
 
   // Auto-scroll console
@@ -288,9 +408,10 @@ export function IDELayout() {
     if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
   }, [outputLines]);
   useEffect(() => {
-    if (serialRef.current) serialRef.current.scrollTop = serialRef.current.scrollHeight;
-  }, [serialLines]);
-
+    if (autoScrollSerial && serialRef.current) {
+      serialRef.current.scrollTop = serialRef.current.scrollHeight;
+    }
+  }, [serialLines, autoScrollSerial]);
   // ── Resizable bottom panel drag ──────────────────────────────────────────
   const onDragMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -433,12 +554,12 @@ export function IDELayout() {
         {/* Serial Monitor button */}
         <button
           id="btn-serial"
-          title={serialRunning ? "Close Serial" : "Open Serial Monitor"}
+          title={serialConnected ? "Disconnect Serial" : "Open Serial Monitor"}
           onClick={handleSerial}
-          className={`tool-btn tool-btn--ghost tool-btn--serial ${serialRunning ? "tool-btn--active" : ""}`}
+          className={`tool-btn tool-btn--ghost tool-btn--serial ${serialConnected ? "tool-btn--active" : ""}`}
         >
           <UsbIcon sx={{ fontSize: 22 }} />
-          <span className="tool-btn-label" style={{ fontSize: '11.5px' }}>{serialRunning ? "Serial ●" : "Serial"}</span>
+          <span className="tool-btn-label" style={{ fontSize: '11.5px' }}>{serialConnected ? "Serial ●" : "Serial"}</span>
         </button>
       </div>
 
@@ -596,22 +717,15 @@ export function IDELayout() {
                     className={`bottom-tab ${isActive ? "bottom-tab--active" : ""}`}
                   >
                     {labels[tab]}
-                    {tab === "errors" && <span className="bottom-tab-badge bottom-tab-badge--ok">0</span>}
-                    {tab === "serial" && serialRunning && <span className="bottom-tab-indicator" />}
+                    {tab === "errors" && standardErrors.length > 0 && (
+                      <span className="bottom-tab-badge bottom-tab-badge--err">{standardErrors.length}</span>
+                    )}
+                    {tab === "serial" && serialConnected && <span className="bottom-tab-indicator" />}
                   </button>
                 );
               })}
               <div className="ide-bottom-tabs-spacer" />
-              <button
-                className="bottom-panel-action"
-                title="Clear console"
-                onClick={() => {
-                  if (activeBottomTab === "out") setOutputLines([]);
-                  else setSerialLines([{ text: "── Serial Monitor ──", type: "dim" }]);
-                }}
-              >
-                <DeleteSweepIcon sx={{ fontSize: 15 }} />
-              </button>
+
             </div>
 
             {/* Output Tab */}
@@ -630,24 +744,142 @@ export function IDELayout() {
 
             {/* Serial Tab */}
             {activeBottomTab === "serial" && (
-              <div ref={serialRef} className="console-output">
-                {serialLines.map((line, i) => (
-                  <div key={i} className="console-line">
-                    {line.type === "plain"
-                      ? <span style={{ color: "var(--ide-text-faint)" }}>{line.text.split("]")[0]}]</span>
-                      : null}
-                    <span style={{ color: logColor(line.type), marginLeft: line.type === "plain" ? 4 : 0 }}>
-                      {line.type === "plain" ? line.text.split("] ")[1] : line.text}
+              <div className="serial-panel">
+                {/* Toolbar */}
+                <div className="serial-toolbar">
+                  <div className="serial-toolbar-left">
+                    <div className={`serial-status-dot ${serialConnected ? "serial-status-dot--on" : ""}`} />
+                    <SettingsEthernetIcon sx={{ fontSize: 14, color: selectedPort ? '#888' : '#444' }} />
+                    <span className="serial-label">
+                      {serialConnected
+                        ? `Connected · ${serialBaudRate} baud`
+                        : selectedPort
+                        ? `${selectedPort} · Disconnected`
+                        : "No port selected"}
                     </span>
                   </div>
-                ))}
+                  <div className="serial-toolbar-right">
+                    <button
+                      className={`serial-icon-btn ${autoScrollSerial ? "serial-icon-btn--active" : ""}`}
+                      onClick={() => setAutoScrollSerial(!autoScrollSerial)}
+                      title="Auto-scroll"
+                    >
+                      <KeyboardDoubleArrowDownIcon sx={{ fontSize: 16 }} />
+                    </button>
+                    <button
+                      className={`serial-icon-btn ${showTimestamps ? "serial-icon-btn--active" : ""}`}
+                      onClick={() => setShowTimestamps(!showTimestamps)}
+                      title="Show Timestamps"
+                    >
+                      <AccessTimeIcon sx={{ fontSize: 16 }} />
+                    </button>
+                    <button
+                      className="serial-icon-btn"
+                      onClick={() => setSerialLines([{ text: "── Serial Monitor ──", type: "dim" }])}
+                      title="Clear Output"
+                    >
+                      <ClearAllIcon sx={{ fontSize: 16 }} />
+                    </button>
+                    <button
+                      className="serial-icon-btn"
+                      onClick={() => {
+                        const text = serialLines.map(l => showTimestamps && l.timestamp ? `[${l.timestamp}] ${l.text}` : l.text).join('\n');
+                        navigator.clipboard.writeText(text);
+                      }}
+                      title="Copy All"
+                    >
+                      <ContentCopyIcon sx={{ fontSize: 14 }} />
+                    </button>
+
+                    <div style={{ width: 1, height: 16, background: '#2a2f3a', margin: '0 4px' }} />
+
+                    <div className="serial-baud-wrapper">
+                      <select
+                        className="serial-select"
+                        value={serialBaudRate}
+                        onChange={(e) => setSerialBaudRate(Number(e.target.value))}
+                        disabled={serialConnected}
+                      >
+                        <option value={9600}>9600 baud</option>
+                        <option value={19200}>19200 baud</option>
+                        <option value={38400}>38400 baud</option>
+                        <option value={57600}>57600 baud</option>
+                        <option value={115200}>115200 baud</option>
+                      </select>
+                      <KeyboardArrowDownIcon className="serial-chevron" sx={{ fontSize: 16 }} />
+                    </div>
+                    <button
+                      className={`serial-connect-btn ${serialConnected ? "serial-connect-btn--disconnect" : "serial-connect-btn--connect"}`}
+                      onClick={toggleSerialConnection}
+                    >
+                      {serialConnected ? (
+                        <><StopIcon sx={{ fontSize: 14 }} /> Disconnect</>
+                      ) : (
+                        <><PlayArrowIcon sx={{ fontSize: 14 }} /> Connect</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Output */}
+                <div ref={serialRef} className="serial-output">
+                  {serialLines.map((line, i) => (
+                    <div key={i} className="serial-line">
+                      {showTimestamps && line.timestamp && (
+                        <span className="serial-line-timestamp">[{line.timestamp}] </span>
+                      )}
+                      <span className={`serial-line-text serial-line-text--${line.type}`}>
+                        {line.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Input */}
+                <div className={`serial-input-bar ${!serialConnected ? "serial-input-bar--disabled" : ""}`}>
+                  <span className="serial-input-prompt">&gt;</span>
+                  <input
+                    ref={serialInputRef}
+                    type="text"
+                    className="serial-input"
+                    placeholder={serialConnected ? "Send message... (Enter to submit)" : "Connect to send data"}
+                    disabled={!serialConnected}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleSendSerial(); }}
+                  />
+                  <button
+                    className="serial-send-btn"
+                    onClick={handleSendSerial}
+                    disabled={!serialConnected}
+                    style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                  >
+                    <SendOutlinedIcon sx={{ fontSize: 14 }} />
+                    <span>Send</span>
+                  </button>
+                </div>
               </div>
             )}
 
             {/* Errors Tab */}
             {activeBottomTab === "errors" && (
-              <div className="console-output">
-                <div className="console-line" style={{ color: "var(--syn-str)" }}>✓ No errors found.</div>
+              <div className="errors-panel">
+                {standardErrors.length === 0 ? (
+                  <div className="errors-empty">
+                    <span className="errors-empty-icon">✓</span>
+                    <span>No errors or warnings found</span>
+                  </div>
+                ) : (
+                  standardErrors.map((err, i) => (
+                    <div key={i} className={`error-item error-item--${err.level}`}>
+                      <span className="error-item-badge">
+                        {err.level === "warning" ? "⚠" : "✕"}
+                      </span>
+                      <div className="error-item-body">
+                        <span className="error-item-location">{err.file}:{err.line}{err.column ? `:${err.column}` : ""}</span>
+                        <span className="error-item-message">{err.message}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </div>
@@ -667,7 +899,7 @@ export function IDELayout() {
           <span className="statusbar-item">Ln 13, Col 1</span>
         </div>
         <div className="statusbar-right">
-          {serialRunning && <span className="statusbar-item statusbar-item--ok">● Serial: 115200</span>}
+          {serialConnected && <span className="statusbar-item statusbar-item--ok">● Serial: {serialBaudRate}</span>}
           
           <span className={`statusbar-item ${selectedPort ? "statusbar-item--muted" : "statusbar-item--warn"}`}>
             {selectedPort ? selectedPort : "No port selected"}

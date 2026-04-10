@@ -14,6 +14,14 @@ export interface FeatureDiagnostic {
   help: string;
 }
 
+export interface StandardDiagnostic {
+  level: string;
+  message: string;
+  file: string;
+  line: number;
+  column: number;
+}
+
 interface EditorState {
   activeFile: string | null;
   content: string;
@@ -21,6 +29,7 @@ interface EditorState {
   logs: string[];
   isBuilding: boolean;
   featureDiagnostics: FeatureDiagnostic[];
+  standardErrors: StandardDiagnostic[];
   setActiveFile: (file: string | null) => void;
   setContent: (content: string) => void;
   addOpenTab: (tab: OpenTab) => void;
@@ -29,6 +38,7 @@ interface EditorState {
   clearLogs: () => void;
   setIsBuilding: (status: boolean) => void;
   setFeatureDiagnostics: (diags: FeatureDiagnostic[]) => void;
+  setStandardErrors: (errors: StandardDiagnostic[]) => void;
 }
 
 interface ProjectState {
@@ -46,6 +56,7 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   logs: ['Rusteon IDE inicializada...'],
   isBuilding: false,
   featureDiagnostics: [],
+  standardErrors: [],
   setActiveFile: (file) => set({ activeFile: file }),
   setContent: (content) => set({ content }),
   addOpenTab: (tab) => set((state) => {
@@ -64,6 +75,7 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   clearLogs: () => set({ logs: [] }),
   setIsBuilding: (status) => set({ isBuilding: status }),
   setFeatureDiagnostics: (diags) => set({ featureDiagnostics: diags }),
+  setStandardErrors: (errors) => set({ standardErrors: errors }),
   
   // Project state
   activeProjectPath: null,
@@ -78,6 +90,8 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   boardPortDialogOpen: false,
   selectedPort: null,
   selectedBoard: null,
+  serialBaudRate: 115200,
+  serialConnected: false,
   
   // Board selector actions
   setSerialDialogOpen: (open) => set({ serialDialogOpen: open }),
@@ -85,4 +99,6 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   setBoardPortDialogOpen: (open) => set({ boardPortDialogOpen: open }),
   setSelectedPort: (port) => set({ selectedPort: port }),
   setSelectedBoard: (board) => set({ selectedBoard: board }),
+  setSerialBaudRate: (baud) => set({ serialBaudRate: baud }),
+  setSerialConnected: (connected) => set({ serialConnected: connected }),
 }));

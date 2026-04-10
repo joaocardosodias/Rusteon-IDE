@@ -13,8 +13,23 @@ pub struct FeatureDiagnostic {
     pub help: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct StandardDiagnostic {
+    pub level: String,
+    pub message: String,
+    pub file: String,
+    pub line: u32,
+    pub column: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CheckResult {
+    pub features: Vec<FeatureDiagnostic>,
+    pub errors: Vec<StandardDiagnostic>,
+}
+
 #[tauri::command]
-pub async fn check_project(project_path: String) -> Result<Vec<FeatureDiagnostic>, String> {
+pub async fn check_project(project_path: String) -> Result<CheckResult, String> {
     let mut cmd = Command::new("cargo");
     cmd.current_dir(&project_path)
        .arg("check")
@@ -26,11 +41,12 @@ pub async fn check_project(project_path: String) -> Result<Vec<FeatureDiagnostic
     // We don't care if output status is success or failure, we want to parse the JSON stdout
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let mut diagnostics = Vec::new();
+    let mut feature_diagnostics = Vec::new();
+    let mut standard_errors = Vec::new();
 
     // Check for build script errors (missing chip features or logging features) which go to stderr
     if let Some(diag) = parse_build_script_feature_error(&stderr, &project_path) {
-        diagnostics.push(diag);
+        feature_diagnostics.push(diag);
     }
 
     for line in stdout.lines() {
@@ -42,8 +58,10 @@ pub async fn check_project(project_path: String) -> Result<Vec<FeatureDiagnostic
             if json.get("reason").and_then(|r| r.as_str()) == Some("compiler-message") {
                 if let Some(msg) = json.get("message") {
                     let level = msg.get("level").and_then(|l| l.as_str()).unwrap_or("");
+                    // Feature specific matching cases...
+                    let mut matched_feature_case = false;
+                    
                     if level == "error" || level == "warning" {
-                        // Look for children with level "help" and containing `feature = "`
                         if let Some(children) = msg.get("children").and_then(|c| c.as_array()) {
                             for child in children {
                                 let child_level = child.get("level").and_then(|l| l.as_str()).unwrap_or("");
@@ -63,13 +81,14 @@ pub async fn check_project(project_path: String) -> Result<Vec<FeatureDiagnostic
                                             }
                                         }
 
-                                        diagnostics.push(FeatureDiagnostic {
+                                        feature_diagnostics.push(FeatureDiagnostic {
                                             crate_name: crate_name.unwrap_or_else(|| "unknown".to_string()),
                                             missing_feature: feature_name.to_string(),
                                             file,
                                             line: line_num,
                                             help: child_msg.to_string(),
                                         });
+                                        matched_feature_case = true;
                                     }
                                 }
                                 
@@ -92,20 +111,21 @@ pub async fn check_project(project_path: String) -> Result<Vec<FeatureDiagnostic
                                                             }
                                                         }
                                                         
-                                                        diagnostics.push(FeatureDiagnostic {
+                                                        feature_diagnostics.push(FeatureDiagnostic {
                                                             crate_name: crate_name.unwrap_or_else(|| "unknown".to_string()),
                                                             missing_feature: feature_name.to_string(),
                                                             file,
                                                             line: line_num,
                                                             help: label.to_string(),
                                                         });
+                                                        matched_feature_case = true;
                                                     }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                                // Case 3: "Missing Crate" - if you wanted to use a crate named `xyz`, use `cargo add xyz`
+                                // Case 3: "Missing Crate"
                                 if child_level == "help" && child_msg.contains("use `cargo add") {
                                     if let Some(crate_name) = extract_missing_crate(child_msg) {
                                         let mut file = String::new();
@@ -116,13 +136,14 @@ pub async fn check_project(project_path: String) -> Result<Vec<FeatureDiagnostic
                                                 line_num = primary_span.get("line_start").and_then(|n| n.as_u64()).unwrap_or(0) as u32;
                                             }
                                         }
-                                        diagnostics.push(FeatureDiagnostic {
+                                        feature_diagnostics.push(FeatureDiagnostic {
                                             crate_name: crate_name.replace('_', "-"),
-                                            missing_feature: "".to_string(), // Empty means it's a missing crate!
+                                            missing_feature: "".to_string(),
                                             file,
                                             line: line_num,
                                             help: child_msg.to_string(),
                                         });
+                                        matched_feature_case = true;
                                     }
                                 }
                             }
@@ -135,19 +156,19 @@ pub async fn check_project(project_path: String) -> Result<Vec<FeatureDiagnostic
                                     if label.starts_with("no external crate `") {
                                         if let Some(end) = label[19..].find('`') {
                                             let mut crate_name = label[19..19 + end].to_string();
-                                            // Rust paths use underscores, but crates use dashes. Replace underscoress with dashes
                                             crate_name = crate_name.replace('_', "-");
                                             
                                             let file = span.get("file_name").and_then(|s| s.as_str()).unwrap_or("").to_string();
                                             let line_num = span.get("line_start").and_then(|n| n.as_u64()).unwrap_or(0) as u32;
 
-                                            diagnostics.push(FeatureDiagnostic {
+                                            feature_diagnostics.push(FeatureDiagnostic {
                                                 crate_name,
                                                 missing_feature: "".to_string(),
                                                 file,
                                                 line: line_num,
                                                 help: label.to_string(),
                                             });
+                                            matched_feature_case = true;
                                         }
                                     }
                                 }
@@ -159,31 +180,64 @@ pub async fn check_project(project_path: String) -> Result<Vec<FeatureDiagnostic
                     if let Some(msg_txt) = msg.get("message").and_then(|m| m.as_str()) {
                         if msg_txt == "`#[panic_handler]` function required, but not found" {
                             if let Some(crate_name) = detect_crate_for_panic_handler(&project_path) {
-                                diagnostics.push(FeatureDiagnostic {
+                                feature_diagnostics.push(FeatureDiagnostic {
                                     crate_name,
                                     missing_feature: "panic-handler".to_string(),
-                                    file: "main.rs".to_string(), // generic top level
+                                    file: "main.rs".to_string(),
                                     line: 0,
                                     help: "A #[panic_handler] is required for #![no_std]. Add the `panic-handler` feature to your backtrace crate.".to_string(),
                                 });
+                                matched_feature_case = true;
                             }
+                        }
+                    }
+                    
+                    // Standard Error Fallback - If it wasn't caught by feature diagnostics
+                    // and it's an error/warning, extract generic problem
+                    if !matched_feature_case && (level == "error" || level == "warning") {
+                        if let Some(msg_txt) = msg.get("message").and_then(|m| m.as_str()) {
+                            // Extract primary span
+                            let mut file = String::new();
+                            let mut line_num = 0;
+                            let mut column_num = 0;
+                            
+                            if let Some(spans) = msg.get("spans").and_then(|s| s.as_array()) {
+                                if let Some(primary_span) = spans.iter().find(|s| s.get("is_primary").and_then(|b| b.as_bool()).unwrap_or(false)) {
+                                    file = primary_span.get("file_name").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                                    line_num = primary_span.get("line_start").and_then(|n| n.as_u64()).unwrap_or(0) as u32;
+                                    column_num = primary_span.get("column_start").and_then(|n| n.as_u64()).unwrap_or(0) as u32;
+                                }
+                            }
+                            
+                            // Prevent spam from unused warnings if user just wants syntax errors, but warnings are good
+                            standard_errors.push(StandardDiagnostic {
+                                level: level.to_string(),
+                                message: msg_txt.to_string(),
+                                file,
+                                line: line_num,
+                                column: column_num,
+                            });
                         }
                     }
                 }
             }
         }
     }
-    let mut unique_diagnostics: Vec<FeatureDiagnostic> = Vec::new();
-    for diag in diagnostics {
-        let exists = unique_diagnostics.iter().any(|d| {
+    
+    let mut unique_features: Vec<FeatureDiagnostic> = Vec::new();
+    for diag in feature_diagnostics {
+        let exists = unique_features.iter().any(|d| {
             d.crate_name == diag.crate_name && d.missing_feature == diag.missing_feature
         });
         if !exists {
-            unique_diagnostics.push(diag);
+            unique_features.push(diag);
         }
     }
 
-    Ok(unique_diagnostics)
+    Ok(CheckResult {
+        features: unique_features,
+        errors: standard_errors,
+    })
 }
 
 fn detect_crate_for_panic_handler(project_path: &str) -> Option<String> {

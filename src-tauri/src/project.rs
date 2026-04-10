@@ -177,3 +177,36 @@ fn apply_esp_template(app: &tauri::AppHandle, project_path: &PathBuf, chip: &str
 
     Ok(())
 }
+
+// ── Last Project Persistence ─────────────────────────────────────────────────
+
+fn last_project_file(app: &tauri::AppHandle) -> PathBuf {
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("last_project.json")
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct LastProject {
+    pub path: String,
+    pub name: String,
+}
+
+#[tauri::command]
+pub fn save_last_project(app: tauri::AppHandle, path: String, name: String) -> Result<(), String> {
+    let file = last_project_file(&app);
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    let data = LastProject { path, name };
+    let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
+    fs::write(file, json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn load_last_project(app: tauri::AppHandle) -> Option<LastProject> {
+    let file = last_project_file(&app);
+    let content = fs::read_to_string(file).ok()?;
+    serde_json::from_str(&content).ok()
+}
