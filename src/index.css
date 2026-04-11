@@ -2071,10 +2071,36 @@ select {
   line-height: 1.5 !important;
 }
 
-/* Type signature heading */
+/* Type signature heading / error title */
 .monaco-hover .hover-contents p:first-child {
   color: #e5c07b !important;
   font-weight: 500 !important;
+  margin-top: 0 !important;
+}
+
+.monaco-hover .hover-contents p {
+  margin: 0 0 6px 0 !important;
+}
+
+.monaco-hover .hover-contents p:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* Loose actions like the 'Copy' icon inside main hover body */
+.monaco-hover .hover-contents .codicon,
+.monaco-hover .hover-contents a.code-action {
+  color: var(--ide-text-muted) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 4px 6px !important;
+  border-radius: 4px !important;
+  margin-top: 2px !important;
+  transition: all var(--transition-fast) !important;
+}
+.monaco-hover .hover-contents .codicon:hover,
+.monaco-hover .hover-contents a.code-action:hover {
+  color: var(--ide-text) !important;
+  background: rgba(255,255,255, 0.06) !important;
 }
 
 /* Links */

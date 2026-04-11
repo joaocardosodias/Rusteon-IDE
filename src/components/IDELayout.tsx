@@ -10,6 +10,8 @@ import { BoardPortDialog } from "./BoardPortDialog";
 import { ProjectExplorer } from "./ProjectExplorer";
 import { ProjectWizard } from "./ProjectWizard";
 import { useIDEStore } from "../store/useIDEStore";
+import { useDebugStore } from "../store/useDebugStore";
+import { DapClient } from "../api/dapClient";
 import { BOARDS } from "../data/boards";
 // Material Icons
 import FolderOpenIcon from "@mui/icons-material/FolderOpenOutlined";
@@ -110,6 +112,11 @@ export function IDELayout() {
   const lspStatus = useIDEStore((state) => state.lspStatus);
   const lspLogs = useIDEStore((state) => state.lspLogs);
   const clearLspLogs = useIDEStore((state) => state.clearLspLogs);
+
+  // Debug State
+  const debugState = useDebugStore((state) => state.state);
+  const setDebugState = useDebugStore((state) => state.setState);
+  const setDebugError = useDebugStore((state) => state.setError);
 
   const outputRef = useRef<HTMLDivElement>(null);
   const serialRef = useRef<HTMLDivElement>(null);
@@ -343,6 +350,83 @@ export function IDELayout() {
     }
   };
 
+  const handleDebug = async () => {
+    if (!activeProjectPath) {
+      addLog("No project opened for debug.");
+      return;
+    }
+
+    // ── Stop Session if already active ─────────────────────────
+    if (debugState !== "idle" && debugState !== "stopped" && debugState !== "error") {
+      try {
+        await invoke("stop_debug_session");
+        await DapClient.cleanup();
+      } catch(e) {}
+      useDebugStore.getState().reset();
+      return;
+    }
+
+    setActiveBottomTab("out");
+    setOutputLines([{ text: "> Starting Debug Session...", type: "prompt" }]);
+
+    try {
+      // ── Step 1: Check and auto-install probe-rs ─────────────
+      const hasProbers = await invoke<boolean>("check_probers_installed");
+      if (!hasProbers) {
+        setOutputLines(prev => [...prev, { text: "⚙ probe-rs not found. Installing... (this may take a few minutes)", type: "dim" }]);
+        setDebugState("building");
+        await invoke("install_probers");
+        setOutputLines(prev => [...prev, { text: "✓ probe-rs installed successfully!", type: "ok" }]);
+      }
+
+      // ── Step 2: Detect build target / hardware compatibility ─
+      const target = await invoke<string>("get_project_target", { projectPath: activeProjectPath });
+      setOutputLines(prev => [...prev, { text: `ℹ Target: ${target}`, type: "dim" }]);
+
+      const isClassicXtensa = target.startsWith("xtensa-esp32-none"); // Classic ESP32
+      const isModern = target.includes("riscv") || target.includes("xtensa-esp32s3") || target.includes("xtensa-esp32s2") || target.includes("xtensa-esp32c");
+
+      if (isClassicXtensa && !isModern) {
+        setOutputLines(prev => [...prev, {
+          text: "⚠ ESP32 Classic detected. Hardware debugging (breakpoints, RTT) requires an external JTAG probe (e.g. ESP-Prog). Continuing, but connection will fail without it...",
+          type: "warn"
+        }]);
+      } else if (target === "unknown") {
+        setOutputLines(prev => [...prev, {
+          text: "⚠ Could not detect build target. Continuing, but debug may not work for all boards.",
+          type: "warn"
+        }]);
+      }
+
+      // ── Step 3: Build ELF ────────────────────────────────────
+      setDebugState("building");
+      setOutputLines(prev => [...prev, { text: "> cargo build --message-format=json", type: "prompt" }]);
+
+      const saved = await autoSaveActiveFile();
+      if (!saved) { setDebugState("idle"); return; }
+
+      const elfPath = await invoke<string>("build_for_debug", { projectPath: activeProjectPath });
+      setOutputLines(prev => [...prev, { text: `✓ Build success → ${elfPath.split("/").pop()}`, type: "ok" }]);
+
+      // ── Step 4: Launch DAP Server ────────────────────────────
+      setDebugState("launching");
+      const port = await invoke<number>("start_debug_session", { projectPath: activeProjectPath });
+      useDebugStore.getState().setPort(port);
+      setOutputLines(prev => [...prev, { text: `✓ probe-rs dap-server listening on port ${port}`, type: "ok" }]);
+
+      // ── Step 5: Connect DAP client ───────────────────────────
+      await DapClient.init();
+      await DapClient.initialize();
+      await DapClient.launch(elfPath);
+
+    } catch (e: any) {
+      setOutputLines(prev => [...prev, { text: `[Debug Error] ${e}`, type: "err" }]);
+      setDebugError(e.toString());
+      useDebugStore.getState().reset();
+    }
+  };
+
+
   const handleFlash = async () => {
     if (!activeProjectPath) {
       addLog("No project opened for flash.");
@@ -408,6 +492,17 @@ export function IDELayout() {
       setIsFlashing(false);
     }
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F5") {
+        e.preventDefault();
+        handleDebug();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleDebug]);
 
   const handleSaveFile = async () => {
     if (activeFile && content) {
@@ -535,30 +630,40 @@ export function IDELayout() {
         <div className="ide-toolbar-actions">
           <button
             id="btn-build"
-            className={`tool-btn tool-btn--primary ${isBuilding ? "tool-btn--busy" : ""}`}
+            className={`tool-btn tool-btn--primary ${isBuilding || debugState === "building" ? "tool-btn--busy" : ""}`}
             onClick={handleBuild}
             title={isBuilding ? "Cancel Build" : "Verify / Build (Ctrl+R)"}
           >
-            {isBuilding
+            {isBuilding || debugState === "building"
               ? <CloseIcon sx={{ fontSize: 22, color: '#fff' }} />
               : <CheckIcon sx={{ fontSize: 22, color: '#fff' }} />}
           </button>
 
           <button
             id="btn-upload"
-            className={`tool-btn tool-btn--primary ${isFlashing ? "tool-btn--busy" : ""}`}
+            className={`tool-btn tool-btn--primary ${isFlashing || debugState === "launching" ? "tool-btn--busy" : ""}`}
             onClick={handleFlash}
             title={isFlashing ? "Cancel Upload" : "Upload / Flash (Ctrl+U)"}
           >
-            {isFlashing
+            {isFlashing || debugState === "launching"
               ? <CloseIcon sx={{ fontSize: 22, color: '#fff' }} />
               : <FileUploadIcon sx={{ fontSize: 22, color: '#fff' }} />}
           </button>
 
           <div className="tool-btn-divider" />
 
-          <button id="btn-debug" className="tool-btn tool-btn--ghost" title="Debug">
-            <BugReportIcon sx={{ fontSize: 22 }} />
+          <button 
+            id="btn-debug" 
+            className={`tool-btn ${debugState === 'running' || debugState === 'paused' ? 'tool-btn--busy' : 'tool-btn--ghost'}`} 
+            title="Start Debugging (F5)"
+            onClick={handleDebug}
+          >
+            {(debugState === "building" || debugState === "launching")
+              ? <RefreshIcon className="spin-icon" sx={{ fontSize: 22 }} />
+              : (debugState === "running" || debugState === "paused") 
+              ? <StopIcon sx={{ fontSize: 22, color: "#fff" }} />
+              : <BugReportIcon sx={{ fontSize: 22 }} />
+            }
           </button>
           <button id="btn-new" className="tool-btn tool-btn--ghost" title="New Project" onClick={() => setWizardOpen(true)}>
             <NoteAddIcon sx={{ fontSize: 22 }} />
