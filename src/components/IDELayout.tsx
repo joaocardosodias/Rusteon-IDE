@@ -41,7 +41,7 @@ import ClearAllIcon from "@mui/icons-material/ClearAll";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 
 // ─── Log line types ───────────────────────────────────────────────────────────
-type BTab = "out" | "serial" | "errors";
+type BTab = "out" | "serial" | "errors" | "lsp";
 type LogLine = { text: string; type: "ok" | "err" | "warn" | "dim" | "prompt" | "plain"; timestamp?: string };
 
 function logColor(type: LogLine["type"]) {
@@ -56,7 +56,7 @@ function logColor(type: LogLine["type"]) {
 // ─── Main IDE Layout ─────────────────────────────────────────────────────────
 export function IDELayout() {
 
-  const [activeSidebar, setActiveSidebar] = useState<number | null>(1);
+  const [activeSidebar, setActiveSidebar] = useState<number | null>(0);
   const [activeBottomTab, setActiveBottomTab] = useState<BTab>("out");
   const [outputLines, setOutputLines] = useState<LogLine[]>([
     { text: "Rusteon IDE v0.1 — Ready", type: "dim" },
@@ -69,7 +69,7 @@ export function IDELayout() {
   const [isFlashing, setIsFlashing] = useState(false);
   const [bottomHeight, setBottomHeight] = useState(180);
   const [isDragging, setIsDragging] = useState(false);
-  const [sideWidth, setSideWidth] = useState(260);
+  const [sideWidth, setSideWidth] = useState(350);
   const [isSideDragging, setIsSideDragging] = useState(false);
 
   // Serial Monitor UI state
@@ -106,8 +106,14 @@ export function IDELayout() {
   const serialConnected = useIDEStore((state) => state.serialConnected);
   const setSerialConnected = useIDEStore((state) => state.setSerialConnected);
 
+  // LSP State
+  const lspStatus = useIDEStore((state) => state.lspStatus);
+  const lspLogs = useIDEStore((state) => state.lspLogs);
+  const clearLspLogs = useIDEStore((state) => state.clearLspLogs);
+
   const outputRef = useRef<HTMLDivElement>(null);
   const serialRef = useRef<HTMLDivElement>(null);
+  const lspRefLocal = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const serialInputRef = useRef<HTMLInputElement>(null);
 
@@ -235,15 +241,24 @@ export function IDELayout() {
       else if (txt.includes("warning:")) type = "warn";
       else if (txt.trim().startsWith("Compiling") || txt.trim().startsWith("Finished") || txt.trim().startsWith("Running")) type = "ok";
       
-      setOutputLines(prev => [...prev, { text: txt, type }]);
+      setOutputLines(prev => {
+        const next = [...prev, { text: txt, type }];
+        return next.length > 500 ? next.slice(next.length - 500) : next;
+      });
     });
     const unlistenFlash = listen<any>("ide-flash-log", (event) => {
-      setOutputLines(prev => [...prev, { text: event.payload.line, type: "plain" }]);
+      setOutputLines(prev => {
+        const next: LogLine[] = [...prev, { text: event.payload.line, type: "plain" as const }];
+        return next.length > 500 ? next.slice(next.length - 500) : next;
+      });
     });
     const unlistenSerial = listen<any>("ide-serial-log", (event) => {
       const now = new Date();
       const ts = now.toLocaleTimeString('en-US', { hour12: false }) + '.' + now.getMilliseconds().toString().padStart(3, '0');
-      setSerialLines(prev => [...prev, { text: event.payload.line, type: "plain", timestamp: ts }]);
+      setSerialLines(prev => {
+        const next: LogLine[] = [...prev, { text: event.payload.line, type: "plain" as const, timestamp: ts }];
+        return next.length > 800 ? next.slice(next.length - 800) : next;
+      });
     });
     return () => {
       unlistenBuild.then(f => f());
@@ -342,6 +357,13 @@ export function IDELayout() {
     
     setOutputLines([{ text: "> Upload starting...", type: "prompt" }]);
     try {
+      // 0. Free the serial port so espflash can connect
+      if (serialConnected) {
+        await invoke("stop_serial");
+        setSerialConnected(false);
+        setOutputLines(prev => [...prev, { text: "  📡 Serial disconnected to free port for flashing.", type: "dim" }]);
+      }
+
       // 1. Auto-save before any compilation
       const saved = await autoSaveActiveFile();
       if (!saved) { setIsFlashing(false); return; }
@@ -412,6 +434,11 @@ export function IDELayout() {
       serialRef.current.scrollTop = serialRef.current.scrollHeight;
     }
   }, [serialLines, autoScrollSerial]);
+  useEffect(() => {
+    if (lspRefLocal.current) {
+      lspRefLocal.current.scrollTop = lspRefLocal.current.scrollHeight;
+    }
+  }, [lspLogs]);
   // ── Resizable bottom panel drag ──────────────────────────────────────────
   const onDragMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -420,11 +447,16 @@ export function IDELayout() {
     setIsDragging(true);
   };
 
+  const rafRef = useRef<number | null>(null);
+
   const onMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging) return;
-    const delta = dragStartY.current - e.clientY;
-    const newH = Math.min(500, Math.max(80, dragStartH.current + delta));
-    setBottomHeight(newH);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      const delta = dragStartY.current - e.clientY;
+      const newH = Math.min(600, Math.max(80, dragStartH.current + delta));
+      setBottomHeight(newH);
+    });
   }, [isDragging]);
 
   const onMouseUp = useCallback(() => setIsDragging(false), []);
@@ -448,12 +480,17 @@ export function IDELayout() {
     setIsSideDragging(true);
   };
 
+  const sideRafRef = useRef<number | null>(null);
+
   const onSideMouseMove = useCallback((e: MouseEvent) => {
     if (!isSideDragging) return;
-    const delta = e.clientX - dragStartX.current;
-    const newW = Math.min(800, Math.max(150, dragStartW.current + delta));
-    setSideWidth(newW);
-  }, [isSideDragging, sideWidth]);
+    if (sideRafRef.current) cancelAnimationFrame(sideRafRef.current);
+    sideRafRef.current = requestAnimationFrame(() => {
+      const delta = e.clientX - dragStartX.current;
+      const newW = Math.min(800, Math.max(150, dragStartW.current + delta));
+      setSideWidth(newW);
+    });
+  }, [isSideDragging]);
 
   const onSideMouseUp = useCallback(() => setIsSideDragging(false), []);
 
@@ -706,8 +743,8 @@ export function IDELayout() {
           <div className="ide-bottom-panel" style={{ height: bottomHeight }}>
             {/* Bottom Tabs */}
             <div className="ide-bottom-tabs">
-              {(["out", "serial", "errors"] as BTab[]).map((tab) => {
-                const labels: Record<BTab, string> = { out: "Output", serial: "Serial Monitor", errors: "Errors" };
+              {(["out", "serial", "errors", "lsp"] as BTab[]).map((tab) => {
+                const labels: Record<BTab, string> = { out: "Output", serial: "Serial Monitor", errors: "Errors", lsp: "LSP Debug" };
                 const isActive = activeBottomTab === tab;
                 return (
                   <button
@@ -880,6 +917,32 @@ export function IDELayout() {
                     </div>
                   ))
                 )}
+              </div>
+            )}
+
+            {/* ── LSP DEBUG TAB ── */}
+            {activeBottomTab === "lsp" && (
+              <div className="ide-output-console lsp-console" style={{ position: "relative", display: "flex", flexDirection: "column" }}>
+                 <div className="serial-toolbar" style={{ position: "absolute", top: 0, right: 0, zIndex: 10, background: "var(--ide-bg)", padding: "4px" }}>
+                   <button className="serial-icon-btn" onClick={clearLspLogs} title="Clear LSP Logs">
+                     <ClearAllIcon sx={{ fontSize: 16 }} />
+                   </button>
+                 </div>
+                 <div style={{ flex: 1, overflowY: "auto", padding: "30px 10px 10px", fontSize: "11px", fontFamily: "monospace" }} ref={lspRefLocal}>
+                   {lspLogs.map((log, i) => (
+                     <div key={i} style={{ 
+                       color: log.dir === 'err' ? 'var(--ide-err)' : log.dir === 'info' ? 'var(--syn-fn)' : 'var(--ide-text-faint)',
+                       marginBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: '2px',
+                       wordBreak: "break-all"
+                     }}>
+                       <span style={{ color: log.dir === 'in' ? 'var(--syn-str)' : log.dir === 'out' ? 'var(--ide-teal)' : 'inherit', marginRight: '8px' }}>
+                         [{log.dir.toUpperCase()}]
+                       </span>
+                       [{log.time}] {log.msg}
+                     </div>
+                   ))}
+                   {lspLogs.length === 0 && <div style={{ color: "var(--ide-text-faint)", fontStyle: "italic" }}>No LSP activity yet...</div>}
+                 </div>
               </div>
             )}
           </div>

@@ -511,7 +511,9 @@ export function LibraryManager() {
                   <span className="bm-vendor-name">Project Dependencies</span>
                   <span className="bm-vendor-count">{installedLibs.length}</span>
                 </button>
-                {installedLibs.map(lib => {
+                {installedLibs
+                  .filter(l => !searchQuery || l.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map(lib => {
                   const status = getStatus(lib.name);
                   const err = libErrors[lib.name];
                   return (

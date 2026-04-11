@@ -503,14 +503,14 @@ select {
   display: flex;
   flex-direction: column;
   flex: 1;
-  overflow: hidden;
+  /* overflow: hidden removed to allow monaco hover to overlap */
 }
 
 .ide-editor-wrap {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* overflow: hidden removed to allow monaco hover to overlap */
   background: var(--ide-bg);
   min-height: 0;
 }
@@ -1971,5 +1971,217 @@ select {
   color: var(--ide-teal);
   transition: background var(--transition-fast), border-color var(--transition-fast);
   flex-shrink: 0;
+}
+
+/* ─── Monaco Hover Widget ──────────────────────────────────────────────────── */
+.monaco-hover {
+  background: #1e2228 !important;
+  border: 1px solid #2d333b !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255,255,255,0.04) !important;
+  overflow: hidden !important;
+  z-index: 99999 !important;
+}
+
+.monaco-hover .hover-row:not(.status-bar) {
+  padding: 0 !important;
+}
+
+.monaco-hover .hover-contents {
+  padding: 10px 14px !important;
+  font-size: 13px !important;
+  line-height: 1.55 !important;
+  color: #c9d1d9 !important;
+  max-width: 620px !important;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+}
+
+/* Force Monaco's internal DOM elements embedded inside hover to NOT paint their own background */
+.monaco-hover .monaco-scrollable-element,
+.monaco-hover .monaco-hover-content,
+.monaco-hover .hover-row {
+  background: transparent !important;
+}
+
+/* Status Bar in hovers (View Problem / Quick Fixes / Lightbulb) */
+.monaco-hover .status-bar,
+.monaco-hover .marker-hover-status-bar,
+.monaco-hover .hover-row.status-bar {
+  padding: 8px 14px !important;
+  background: var(--ide-toolbar) !important; /* Slightly distinct background */
+  border-top: 1px solid var(--ide-border-light) !important;
+  color: #cdd6f4 !important;
+  font-size: 12.5px !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  border-radius: 0 0 8px 8px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.monaco-hover .status-bar *,
+.monaco-hover .marker-hover-status-bar *,
+.monaco-hover .hover-row.status-bar * {
+  color: #a6adc8 !important;   /* Tom base da barra inferior */
+}
+
+.monaco-hover .status-bar a,
+.monaco-hover .marker-hover-status-bar a,
+.monaco-hover .hover-row.status-bar a,
+.monaco-hover .action-label,
+.monaco-hover a[role="button"] {
+  color: var(--ide-teal) !important;
+  font-weight: 500 !important;
+  margin-right: 14px !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+}
+
+.monaco-hover a:hover,
+.monaco-hover a.action-label:hover {
+  text-decoration: underline !important;
+  color: var(--ide-teal-hover) !important;
+}
+
+/* Code blocks inside hovers */
+.monaco-hover .hover-contents code {
+  background: rgba(0, 151, 157, 0.08) !important;
+  color: #7ec699 !important;
+  padding: 1px 5px !important;
+  border-radius: 4px !important;
+  font-size: 12.5px !important;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+  border: 1px solid rgba(0, 151, 157, 0.15) !important;
+}
+
+.monaco-hover .hover-contents pre {
+  background: #161a1f !important;
+  border: 1px solid #2d333b !important;
+  border-radius: 6px !important;
+  padding: 10px 12px !important;
+  margin: 8px 0 !important;
+  overflow-x: auto !important;
+}
+
+.monaco-hover .hover-contents pre code {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  color: #d4d4d4 !important;
+  font-size: 12.5px !important;
+  line-height: 1.5 !important;
+}
+
+/* Type signature heading */
+.monaco-hover .hover-contents p:first-child {
+  color: #e5c07b !important;
+  font-weight: 500 !important;
+}
+
+/* Links */
+.monaco-hover .hover-contents a {
+  color: var(--ide-teal) !important;
+  text-decoration: none !important;
+}
+
+.monaco-hover .hover-contents a:hover {
+  text-decoration: underline !important;
+}
+
+/* Markdown headings in hover */
+.monaco-hover .hover-contents h1,
+.monaco-hover .hover-contents h2,
+.monaco-hover .hover-contents h3 {
+  color: #e5c07b !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  margin-top: 10px !important;
+  margin-bottom: 4px !important;
+  padding-bottom: 4px !important;
+  border-bottom: 1px solid #2d333b !important;
+}
+
+/* Horizontal rule */
+.monaco-hover .hover-contents hr {
+  border: none !important;
+  border-top: 1px solid #2d333b !important;
+  margin: 8px 0 !important;
+}
+
+/* Scrollbar inside hover */
+.monaco-hover .scrollbar .slider {
+  background: rgba(0, 151, 157, 0.3) !important;
+  border-radius: 4px !important;
+}
+
+/* ─── Monaco Suggest/Autocomplete Widget ───────────────────────────────────── */
+.suggest-widget {
+  background: #1e2228 !important;
+  border: 1px solid #2d333b !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45) !important;
+  overflow: hidden !important;
+  z-index: 99999 !important;
+}
+
+.suggest-widget .monaco-list .monaco-list-row {
+  padding: 2px 8px !important;
+  border-radius: 4px !important;
+}
+
+.suggest-widget .monaco-list .monaco-list-row.focused {
+  background: rgba(0, 151, 157, 0.15) !important;
+  color: #fff !important;
+}
+
+.suggest-widget .monaco-list .monaco-list-row:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.suggest-widget .details {
+  background: #1e2228 !important;
+  border-left: 1px solid #2d333b !important;
+}
+
+/* ─── Monaco Parameter Hints ───────────────────────────────────────────────── */
+.parameter-hints-widget {
+  background: #1e2228 !important;
+  border: 1px solid #2d333b !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45) !important;
+  z-index: 99999 !important;
+}
+
+/* ─── Monaco Find Widget ───────────────────────────────────────────────────── */
+.find-widget {
+  background: #21252b !important;
+  border: 1px solid #2d333b !important;
+  border-radius: 0 0 8px 8px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+  z-index: 99999 !important;
+}
+
+/* ─── Monaco Context Menu ──────────────────────────────────────────────────── */
+.monaco-menu-container {
+  z-index: 99999 !important;
+}
+
+.monaco-menu .monaco-action-bar.vertical {
+  background: #1e2228 !important;
+  border: 1px solid #2d333b !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45) !important;
+  padding: 4px !important;
+  z-index: 99999 !important;
+}
+
+.monaco-menu .monaco-action-bar.vertical .action-item .action-label {
+  border-radius: 4px !important;
+  padding: 4px 12px !important;
+  color: #c9d1d9 !important;
+}
+
+.monaco-menu .monaco-action-bar.vertical .action-item .action-label:hover {
+  background: rgba(0, 151, 157, 0.15) !important;
+  color: #fff !important;
 }
 .pw-browse-btn:hover { background: rgba(0, 151, 157, 0.08); border-color: var(--ide-teal); }
