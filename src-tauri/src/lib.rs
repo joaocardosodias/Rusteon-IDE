@@ -10,7 +10,7 @@ mod library;
 mod diagnostics;
 
 mod build_flash;
-
+mod lsp;
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -348,6 +348,7 @@ pub fn run() {
                 port: std::sync::Arc::new(std::sync::Mutex::new(None)),
                 active: std::sync::Arc::new(std::sync::Mutex::new(false)),
             });
+            app.manage(lsp::LspState::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -375,6 +376,12 @@ pub fn run() {
             serial::start_serial,
             serial::stop_serial,
             serial::send_serial,
+            lsp::check_lsp_installed,
+            lsp::install_lsp,
+            lsp::start_lsp,
+            lsp::stop_lsp,
+            lsp::send_lsp_message,
+            project::detect_cargo_target,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

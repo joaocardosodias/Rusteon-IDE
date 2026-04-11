@@ -210,3 +210,22 @@ pub fn load_last_project(app: tauri::AppHandle) -> Option<LastProject> {
     let content = fs::read_to_string(file).ok()?;
     serde_json::from_str(&content).ok()
 }
+
+#[tauri::command]
+pub fn detect_cargo_target(project_path: String) -> Result<Option<String>, String> {
+    // First try the .cargo/config.toml (standard embedded pattern)
+    let config_path = Path::new(&project_path).join(".cargo").join("config.toml");
+    if config_path.exists() {
+        if let Ok(content) = fs::read_to_string(&config_path) {
+            if let Ok(doc) = content.parse::<toml_edit::DocumentMut>() {
+                if let Some(build) = doc.get("build").and_then(|i| i.as_table()) {
+                    if let Some(target) = build.get("target").and_then(|i| i.as_str()) {
+                        return Ok(Some(target.to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}

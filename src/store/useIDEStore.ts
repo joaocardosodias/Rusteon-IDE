@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import { BoardSelectorState } from '../types/board-selector';
 
+export type LspStatus = 'idle' | 'starting' | 'ready' | 'error' | 'not_installed';
+
+export interface LspLog {
+  dir: 'in' | 'out' | 'info' | 'err';
+  msg: string;
+  time: string;
+}
+
 export interface OpenTab {
   path: string;
   name: string;
@@ -27,6 +35,8 @@ interface EditorState {
   content: string;
   openTabs: OpenTab[];
   logs: string[];
+  lspStatus: LspStatus;
+  lspLogs: LspLog[];
   isBuilding: boolean;
   featureDiagnostics: FeatureDiagnostic[];
   standardErrors: StandardDiagnostic[];
@@ -36,6 +46,9 @@ interface EditorState {
   removeOpenTab: (path: string) => void;
   addLog: (log: string) => void;
   clearLogs: () => void;
+  setLspStatus: (status: LspStatus) => void;
+  addLspLog: (log: LspLog) => void;
+  clearLspLogs: () => void;
   setIsBuilding: (status: boolean) => void;
   setFeatureDiagnostics: (diags: FeatureDiagnostic[]) => void;
   setStandardErrors: (errors: StandardDiagnostic[]) => void;
@@ -54,6 +67,8 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   content: '// Bem-vindo ao Rusteon IDE\n// Abra um projeto para começar',
   openTabs: [],
   logs: ['Rusteon IDE inicializada...'],
+  lspStatus: 'idle',
+  lspLogs: [],
   isBuilding: false,
   featureDiagnostics: [],
   standardErrors: [],
@@ -73,6 +88,12 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   }),
   addLog: (log) => set((state) => ({ logs: [...state.logs, `[${new Date().toLocaleTimeString()}] ${log}`] })),
   clearLogs: () => set({ logs: [] }),
+  setLspStatus: (status) => set({ lspStatus: status }),
+  addLspLog: (log) => set((state) => {
+    const next = [...state.lspLogs, log];
+    return { lspLogs: next.length > 200 ? next.slice(next.length - 200) : next };
+  }),
+  clearLspLogs: () => set({ lspLogs: [] }),
   setIsBuilding: (status) => set({ isBuilding: status }),
   setFeatureDiagnostics: (diags) => set({ featureDiagnostics: diags }),
   setStandardErrors: (errors) => set({ standardErrors: errors }),
