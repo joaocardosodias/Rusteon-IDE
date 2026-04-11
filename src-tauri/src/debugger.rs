@@ -97,12 +97,35 @@ struct CargoMessage {
 
 #[tauri::command]
 pub async fn build_for_debug(project_path: String, app: AppHandle) -> Result<String, String> {
+    // Detect xtensa target for toolchain selection
+    let cargo_config = std::path::Path::new(&project_path).join(".cargo/config.toml");
+    let is_xtensa = std::fs::read_to_string(&cargo_config)
+        .ok()
+        .and_then(|c| {
+            c.lines()
+                .find(|l| l.trim_start().starts_with("target") && l.contains('='))
+                .and_then(|l| l.split('=').nth(1))
+                .map(|s| s.trim().trim_matches('"').to_string())
+        })
+        .map(|t| t.starts_with("xtensa"))
+        .unwrap_or(false);
+
+    let env_strip = [
+        "RUSTUP_TOOLCHAIN", "RUSTC", "RUSTDOC", "RUSTC_WRAPPER",
+        "RUSTFLAGS", "CARGO", "CARGO_MAKEFLAGS", "CARGO_HOME",
+    ];
+
     let mut cmd = Command::new("cargo");
-    cmd.arg("build")
-        .arg("--message-format=json")
-        .env_remove("RUSTUP_TOOLCHAIN")
-        .env_remove("CARGO")
-        .current_dir(&project_path)
+    if is_xtensa { cmd.arg("+esp"); }
+    cmd.arg("build").arg("--message-format=json");
+    for var in &env_strip { cmd.env_remove(var); }
+    if let Ok(home) = std::env::var("HOME") {
+        let cargo_home = format!("{home}/.cargo");
+        if std::path::Path::new(&cargo_home).exists() {
+            cmd.env("CARGO_HOME", cargo_home);
+        }
+    }
+    cmd.current_dir(&project_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
@@ -111,6 +134,7 @@ pub async fn build_for_debug(project_path: String, app: AppHandle) -> Result<Str
     let stderr = child.stderr.take().unwrap();
 
     let app_clone = app.clone();
+
     
     // Read stdout which contains the JSON messages from cargo
     let th = std::thread::spawn(move || {
