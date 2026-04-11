@@ -34,100 +34,119 @@ fn emit_log(app: &AppHandle, event_name: &str, line: String, stream: &str) {
     );
 }
 
+/// Build a `cargo` command that is fully isolated from the Tauri/rustup host env.
+/// This prevents env vars like RUSTUP_TOOLCHAIN, RUSTC, RUSTDOC, etc. from
+/// leaking into the user's embedded project build and causing "Unsupported target" errors.
+fn isolated_cargo_cmd(extra_args: &[&str], project_path: &str) -> Command {
+    let mut cmd = Command::new("cargo");
+    for arg in extra_args {
+        cmd.arg(arg);
+    }
+    // Strip every known Rust/Cargo env var that Tauri's dev runner injects.
+    // RUSTUP_TOOLCHAIN is the main culprit but RUSTC/RUSTDOC can also override.
+    let strip = [
+        "RUSTUP_TOOLCHAIN",
+        "RUSTC",
+        "RUSTDOC",
+        "RUSTC_WRAPPER",
+        "RUSTFLAGS",
+        "CARGO",
+        "CARGO_MAKEFLAGS",
+        "CARGO_HOME",  // only strip if dev overrides; rustup will find its own
+    ];
+    for var in &strip {
+        cmd.env_remove(var);
+    }
+    cmd.current_dir(project_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    cmd
+}
+
 #[tauri::command]
 pub async fn build_project(
     app: AppHandle,
     state: State<'_, ProcessState>,
     project_path: String,
 ) -> Result<String, String> {
-    // 1. Ensure no other process is running
     cancel_process(state.clone())?;
 
-    // 2. Setup the cargo build command
-    let mut cmd = Command::new("cargo");
-    cmd.arg("build")
-        .arg("--release")
-        // We use standard textual output, but color=always helps us parse or just color=never
-        .arg("--color=never")
-        .env_remove("RUSTUP_TOOLCHAIN")
-        .env_remove("CARGO")
-        .current_dir(&project_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    // ── Detect target triple from .cargo/config.toml ─────────────────────────
+    let cargo_config = std::path::Path::new(&project_path).join(".cargo/config.toml");
+    let target_triple: Option<String> = std::fs::read_to_string(&cargo_config)
+        .ok()
+        .and_then(|c| {
+            c.lines()
+                .find(|l| l.trim_start().starts_with("target") && l.contains('='))
+                .and_then(|l| l.split('=').nth(1))
+                .map(|s| s.trim().trim_matches('"').to_string())
+        });
 
-    // 3. Spawn the process
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => return Err(format!("Failed to spawn cargo build: {}", e)),
+    let is_xtensa = target_triple
+        .as_deref()
+        .map(|t| t.starts_with("xtensa"))
+        .unwrap_or(false);
+
+    // ── Build the command ─────────────────────────────────────────────────────
+    // For xtensa targets, force the +esp toolchain explicitly (it won't be
+    // picked up from rust-toolchain.toml when RUSTUP_TOOLCHAIN is stripped).
+    let mut cmd = if is_xtensa {
+        isolated_cargo_cmd(&["+esp", "build", "--release", "--color=never"], &project_path)
+    } else {
+        isolated_cargo_cmd(&["build", "--release", "--color=never"], &project_path)
     };
+    // Restore CARGO_HOME so the user's own Cargo installation is used.
+    if let Ok(home) = std::env::var("HOME") {
+        let cargo_home = format!("{home}/.cargo");
+        if std::path::Path::new(&cargo_home).exists() {
+            cmd.env("CARGO_HOME", cargo_home);
+        }
+    }
 
-    // Extract stdout and stderr before storing the child
+    let mut child = cmd.spawn()
+        .map_err(|e| format!("Failed to spawn cargo build: {e}"))?;
+
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
 
-    // Store child for cancellation
     if let Ok(mut guard) = state.child.lock() {
         *guard = Some(child);
     }
 
-    let app_clone1 = app.clone();
-    let app_clone2 = app.clone();
-
-    // 4. Spawn thread for STDOUT
+    let app1 = app.clone();
+    let app2 = app.clone();
     std::thread::spawn(move || {
-        let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            if let Ok(l) = line {
-                emit_log(&app_clone1, "ide-build-log", l, "stdout");
-            }
-        }
+        BufReader::new(stdout).lines().for_each(|l| {
+            if let Ok(line) = l { emit_log(&app1, "ide-build-log", line, "stdout"); }
+        });
+    });
+    std::thread::spawn(move || {
+        BufReader::new(stderr).lines().for_each(|l| {
+            if let Ok(line) = l { emit_log(&app2, "ide-build-log", line, "stderr"); }
+        });
     });
 
-    // 5. Spawn thread for STDERR
-    std::thread::spawn(move || {
-        let reader = BufReader::new(stderr);
-        for line in reader.lines() {
-            if let Ok(l) = line {
-                emit_log(&app_clone2, "ide-build-log", l, "stderr");
-            }
-        }
-    });
-
-    // We can just return success for spawning but we wait for it so the command finishes when the build finishes.
-    // Wait, async tauri command doesn't block the UI thread! It runs in a threadpool!
-    // So we can wait synchronously.
-    
-    // Instead of waiting with standard thread sleep, we can just extract the child in a loop or wait for it.
-    // However, if we wait for it, we must lock it. But locking it blocks cancel_process.
-    // So we will just loop with a lock check over the child.
-    
-    // Better: We just let it run. But we need to return status.
-    // We can pull the child out, run child.wait(), and if someone wants to cancel they can't via mutex easily if we hold it.
-    // Trick: sleep loop.
     loop {
         std::thread::sleep(std::time::Duration::from_millis(100));
         let mut guard = state.child.lock().unwrap();
         if let Some(child) = guard.as_mut() {
             match child.try_wait() {
                 Ok(Some(status)) => {
-                    let s = status.success();
+                    let ok = status.success();
                     let _ = guard.take();
-                    if s {
-                        return Ok("Build finished successfully".into());
+                    return if ok {
+                        Ok("Build finished successfully".into())
                     } else {
-                        return Err("Build failed".into());
-                    }
+                        Err("Build failed".into())
+                    };
                 }
-                Ok(None) => {
-                    // Still running
-                }
+                Ok(None) => {}
                 Err(e) => {
                     let _ = guard.take();
-                    return Err(format!("Error waiting: {}", e));
+                    return Err(format!("Error waiting for build: {e}"));
                 }
             }
         } else {
-            // Child was taken by cancel_process!
             return Err("Build cancelled".into());
         }
     }

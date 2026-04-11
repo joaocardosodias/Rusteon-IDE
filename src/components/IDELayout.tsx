@@ -12,6 +12,8 @@ import { ProjectWizard } from "./ProjectWizard";
 import { useIDEStore } from "../store/useIDEStore";
 import { useDebugStore } from "../store/useDebugStore";
 import { DapClient } from "../api/dapClient";
+import { useMemoryStore, parseTelemetryLine } from "../store/useMemoryStore";
+import { MemoryDashboard } from "./MemoryDashboard";
 import { BOARDS } from "../data/boards";
 // Material Icons
 import FolderOpenIcon from "@mui/icons-material/FolderOpenOutlined";
@@ -41,6 +43,7 @@ import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import ClearAllIcon from "@mui/icons-material/ClearAll";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import MemoryIcon from "@mui/icons-material/Memory";
 
 // ─── Log line types ───────────────────────────────────────────────────────────
 type BTab = "out" | "serial" | "errors" | "lsp";
@@ -73,6 +76,7 @@ export function IDELayout() {
   const [isDragging, setIsDragging] = useState(false);
   const [sideWidth, setSideWidth] = useState(350);
   const [isSideDragging, setIsSideDragging] = useState(false);
+  const [memoryModalOpen, setMemoryModalOpen] = useState(false);
 
   // Serial Monitor UI state
   const [autoScrollSerial, setAutoScrollSerial] = useState(true);
@@ -117,6 +121,9 @@ export function IDELayout() {
   const debugState = useDebugStore((state) => state.state);
   const setDebugState = useDebugStore((state) => state.setState);
   const setDebugError = useDebugStore((state) => state.setError);
+
+  // Memory State
+  const memoryActive = useMemoryStore((state) => state.active);
 
   const outputRef = useRef<HTMLDivElement>(null);
   const serialRef = useRef<HTMLDivElement>(null);
@@ -260,10 +267,19 @@ export function IDELayout() {
       });
     });
     const unlistenSerial = listen<any>("ide-serial-log", (event) => {
+      const raw: string = event.payload.line;
+
+      // ── Telemetry intercept ────────────────────────────────────────
+      const snap = parseTelemetryLine(raw);
+      if (snap) {
+        useMemoryStore.getState().setSnapshot(snap);
+        return; // swallow — don't show raw telemetry bytes in the console
+      }
+
       const now = new Date();
       const ts = now.toLocaleTimeString('en-US', { hour12: false }) + '.' + now.getMilliseconds().toString().padStart(3, '0');
       setSerialLines(prev => {
-        const next: LogLine[] = [...prev, { text: event.payload.line, type: "plain" as const, timestamp: ts }];
+        const next: LogLine[] = [...prev, { text: raw, type: "plain" as const, timestamp: ts }];
         return next.length > 800 ? next.slice(next.length - 800) : next;
       });
     });
@@ -674,6 +690,18 @@ export function IDELayout() {
           <button id="btn-save" className="tool-btn tool-btn--ghost" title="Save (Ctrl+S)" onClick={handleSaveFile}>
             <SaveIcon sx={{ fontSize: 22 }} />
           </button>
+
+          <div className="tool-btn-divider" />
+
+          <button
+            id="btn-memory"
+            className={`tool-btn tool-btn--ghost ${memoryModalOpen ? "tool-btn--active" : ""}`}
+            title="Live Memory Dashboard"
+            onClick={() => setMemoryModalOpen(true)}
+          >
+            <MemoryIcon sx={{ fontSize: 22 }} />
+            {memoryActive && <div className="tool-btn-badge" />}
+          </button>
         </div>
 
         {/* Board Selector Button with Dropdowns */}
@@ -844,12 +872,13 @@ export function IDELayout() {
             <div className="resize-handle-bar" />
           </div>
 
+
           {/* Bottom Panel */}
           <div className="ide-bottom-panel" style={{ height: bottomHeight }}>
             {/* Bottom Tabs */}
             <div className="ide-bottom-tabs">
               {(["out", "serial", "errors", "lsp"] as BTab[]).map((tab) => {
-                const labels: Record<BTab, string> = { out: "Output", serial: "Serial Monitor", errors: "Errors", lsp: "LSP Debug" };
+                const tabLabelMap: Record<string, string> = { out: "Output", serial: "Serial Monitor", errors: "Errors", lsp: "LSP Debug" };
                 const isActive = activeBottomTab === tab;
                 return (
                   <button
@@ -858,7 +887,7 @@ export function IDELayout() {
                     onClick={() => setActiveBottomTab(tab)}
                     className={`bottom-tab ${isActive ? "bottom-tab--active" : ""}`}
                   >
-                    {labels[tab]}
+                    {tabLabelMap[tab]}
                     {tab === "errors" && standardErrors.length > 0 && (
                       <span className="bottom-tab-badge bottom-tab-badge--err">{standardErrors.length}</span>
                     )}
@@ -1083,6 +1112,23 @@ export function IDELayout() {
       />
 
       <ProjectWizard />
+
+      {/* ── MEMORY MODAL OVERLAY ──────────────────────────────────────────── */}
+      {memoryModalOpen && (
+        <div className="mem-modal-overlay" onMouseDown={() => setMemoryModalOpen(false)}>
+          <div className="mem-modal-content" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="mem-modal-header">
+              <span>Memory Diagnostics</span>
+              <button className="mem-modal-close" onClick={() => setMemoryModalOpen(false)}>
+                <CloseIcon sx={{ fontSize: 18 }} />
+              </button>
+            </div>
+            <div className="mem-modal-body">
+              <MemoryDashboard />
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
