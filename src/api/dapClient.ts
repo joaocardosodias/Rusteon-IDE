@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { useDebugStore } from '../store/useDebugStore';
+import { parseTelemetryLine, useMemoryStore } from '../store/useMemoryStore';
 
 // Tipos mínimos do DAP Protocol (Microsoft)
 interface DAPMessage {
@@ -114,21 +115,38 @@ export class DapClient {
         console.log('[DAP] Target paused/stopped:', ev.body);
         store.setState('paused');
         // The IDE should now request Threads -> StackTrace -> Scopes -> Variables
-        // We will trigger that from the UI side (React) effectively reacting to 'paused' state
+        // Fetch stack trace automatically to highlight the active line
+        if (ev.body && ev.body.threadId) {
+           this.stackTrace(ev.body.threadId).then((res: any) => {
+              if (res && res.stackFrames && res.stackFrames.length > 0) {
+                 const frame = res.stackFrames[0];
+                 if (frame.source && frame.source.path) {
+                    store.setActiveLine(frame.source.path, frame.line);
+                 }
+              }
+           }).catch(console.error);
+        }
         break;
 
       case 'continued':
         console.log('[DAP] Target running via continued event');
         store.setState('running');
-        store.setActiveLine(null);
+        store.setActiveLine(null, null);
         break;
 
       case 'output':
-        // Output event is used for RTT output!
-        // The formatting inside ev.body.output will have the RTT payload
+        // Output event is used for RTT output (defmt, etc)!
         if (ev.body?.output) {
-          // TODO: Pipe to our Console 
-          console.log('%c[RTT]', 'color: cyan', ev.body.output.trim());
+          const text = ev.body.output.trim();
+          const memSnap = parseTelemetryLine(text);
+          
+          if (memSnap) {
+            useMemoryStore.getState().setSnapshot(memSnap);
+          } else if (text) {
+             window.dispatchEvent(new CustomEvent('dap-rtt-log', {
+               detail: { text, type: 'plain' }
+             }));
+          }
         }
         break;
 
@@ -156,7 +174,7 @@ export class DapClient {
     });
   }
 
-  public static async launch(elfPath: string) {
+  public static async launch(elfPath: string, chipName: string) {
     return this.sendRequest('launch', {
       program: elfPath,
       cwd: "",
@@ -164,8 +182,13 @@ export class DapClient {
         flashingEnabled: true,
         resetAfterFlashing: true,
       },
+      coreConfigs: [{
+        coreIndex: 0,
+        programBinary: elfPath,
+      }],
       // specific probe-rs config
-      chip: 'esp32', // TODO: Make this dynamic from target eventually
+      chip: chipName,
+      rttEnabled: true,
     });
   }
 

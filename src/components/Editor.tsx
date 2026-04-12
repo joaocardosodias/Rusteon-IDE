@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Editor as MonacoEditor } from "@monaco-editor/react";
 import { useIDEStore } from "../store/useIDEStore";
+import { useDebugStore } from "../store/useDebugStore";
 import { LspClient } from "../api/lspClient";
 
 export function Editor() {
@@ -13,6 +14,10 @@ export function Editor() {
   const editorRef = useRef<any>(null);
   const debounceTimer = useRef<any>(null);
   const providersRef = useRef<any[]>([]);
+  const decorationsColRef = useRef<any>(null);
+
+  const debugBreakpoints = useDebugStore((state) => state.breakpoints);
+  const debugActiveLine = useDebugStore((state) => state.activeLine);
 
   // Helper: always get the freshest activeFile from the store (avoids stale closures)
   const getActiveFile = () => useIDEStore.getState().activeFile;
@@ -125,6 +130,40 @@ export function Editor() {
       }
     }
   }, [activeFile]);
+
+  // ──── Reative Debugging Decorations ─────────────────────────────────────────
+  useEffect(() => {
+    if (!editorRef.current || !monacoRef.current || !activeFile) return;
+    const monaco = monacoRef.current;
+    
+    if (!decorationsColRef.current) {
+      decorationsColRef.current = editorRef.current.createDecorationsCollection();
+    }
+    
+    const fileBps = debugBreakpoints[activeFile] || [];
+    
+    const newDecorations: any[] = fileBps.map((line: number) => ({
+      range: new monaco.Range(line, 1, line, 1),
+      options: {
+        isWholeLine: false,
+        glyphMarginClassName: 'debug-breakpoint-glyph',
+        stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges
+      }
+    }));
+    
+    if (debugActiveLine && debugActiveLine.path === activeFile) {
+      newDecorations.push({
+        range: new monaco.Range(debugActiveLine.line, 1, debugActiveLine.line, 1),
+        options: {
+          isWholeLine: true,
+          className: 'debug-active-line',
+          glyphMarginClassName: 'debug-active-glyph',
+        }
+      });
+    }
+
+    decorationsColRef.current.set(newDecorations);
+  }, [debugBreakpoints, debugActiveLine, activeFile]);
 
   // ──── Register Providers ──────────────────────────────────────────────────
   const setupMonacoProviders = useCallback(() => {
@@ -282,6 +321,21 @@ export function Editor() {
           }
         } catch (e) {
           addLog(`[Error] Failed to save file: ${e}`);
+        }
+      }
+    });
+
+    // Breakpoints Click Handling
+    editor.onMouseDown((e: any) => {
+      // Target types: 4 = GUTTER_GLYPH_MARGIN, 2 = GUTTER_LINE_NUMBERS, 3 = GUTTER_LINE_DECORATIONS
+      if (e.target && (e.target.type === 4 || e.target.type === 2 || e.target.type === 3)) {
+        const line = e.target.position?.lineNumber;
+        const file = getActiveFile();
+        if (file && line) {
+          useDebugStore.getState().toggleBreakpoint(file, line);
+          
+          // Todo: Se estiver rodando o Debugger, enviar a atualização imediata via DAP:
+          // DapClient.setBreakpoints(file, new_bp_array)
         }
       }
     });
