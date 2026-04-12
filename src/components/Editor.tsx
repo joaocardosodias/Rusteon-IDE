@@ -348,17 +348,52 @@ export function Editor() {
       base: "vs-dark",
       inherit: true,
       rules: [
-        { token: "keyword", foreground: "f87171", fontStyle: "bold" },
-        { token: "identifier.function", foreground: "fbbf24" },
-        { token: "type.identifier", foreground: "facc15" },
-        { token: "string", foreground: "a3e635" },
-        { token: "number", foreground: "fb923c" },
-        { token: "comment", foreground: "5a5f66" },
-        { token: "keyword.directive", foreground: "f97316" }, // Macros/Directivas
-        { token: "annotation", foreground: "60a5fa" },
-      ],
+  // — Keywords —
+  { token: 'keyword',             foreground: '#ff7a3c', fontStyle: 'bold' },
+  { token: 'keyword.control',     foreground: '#ff6a2f', fontStyle: 'bold' },
+  { token: 'keyword.directive',   foreground: '#c55314' }, 
+  { token: 'keyword.operator',    foreground: '#e89a5a' },
+
+  // — Funções —
+  { token: 'identifier.function', foreground: '#f2b84a' },
+  { token: 'support.function',    foreground: '#f2b84a' },
+
+  // — Tipos —
+  { token: 'type.identifier',     foreground: '#d49a3a' },
+  { token: 'entity.name.type',    foreground: '#d49a3a' },
+  { token: 'storage.type',        foreground: '#d49a3a' },
+
+  // — Strings —
+  { token: 'string',              foreground: '#8ccf6a' },
+  { token: 'string.escape',       foreground: '#b4e890' },
+
+  // — Números —
+  { token: 'number',              foreground: '#e0a040' },
+  { token: 'number.float',        foreground: '#e0a040' },
+  { token: 'number.hex',          foreground: '#c9872a' },
+
+  // — Comentários —
+  { token: 'comment',             foreground: '#b1722fff', fontStyle: 'italic' },
+  { token: 'comment.doc',         foreground: '#af7435ff', fontStyle: 'italic' },
+
+  // — Macros / Anotações —
+  { token: 'annotation',          foreground: '#ff8a3c' },
+  { token: 'macro',               foreground: '#ff8a3c', fontStyle: 'bold' },
+
+  // — Operadores e pontuação —
+  { token: 'operator',            foreground: '#c89a60' },
+  { token: 'delimiter',           foreground: '#7a5a30' },
+
+  // — Variáveis —
+  { token: 'variable',            foreground: '#e6c68a' },
+  { token: 'variable.parameter',  foreground: '#d0a870' },
+
+  // — Constantes —
+  { token: 'constant',            foreground: '#ff9a5a' },
+  { token: 'constant.language',   foreground: '#ff9a5a' },
+],
       colors: {
-        "editor.background": "#13151864",
+        "editor.background": "#0d0d0e98",
         "editor.foreground": "#e2e4e7",
         "editor.lineHighlightBackground": "#18191b",
         "editor.selectionBackground": "#ff9e0022",

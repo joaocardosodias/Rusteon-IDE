@@ -102,18 +102,18 @@ export function SerialPortDialog({ open, onClose, onPortSelected, onOpenBoardPor
       }}
     >
       {/* Header acting as "Select Board" */}
-      <div 
+      <div
         className="dialog-header-alt flex justify-between items-center cursor-pointer hover:bg-opacity-80 transition-colors"
         onClick={onClose}
-        style={{ 
-          padding: '10px 14px', 
+        style={{
+          padding: '10px 14px',
           borderBottom: '1px solid var(--ide-teal-dim)',
           backgroundColor: '#2b3036'
         }}
       >
         <span style={{ fontSize: '14px', color: '#e0e2e5' }}>Select Board</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e0e2e5" strokeWidth="2.5">
-          <path d="M6 9l6 6 6-6"/>
+          <path d="M6 9l6 6 6-6" />
         </svg>
       </div>
 
@@ -138,7 +138,7 @@ export function SerialPortDialog({ open, onClose, onPortSelected, onOpenBoardPor
               <span>{error}</span>
             </div>
             <button
-              onClick={() => {}}
+              onClick={() => { }}
               className="dialog-btn-primary w-full"
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
             >
@@ -204,7 +204,7 @@ export function SerialPortDialog({ open, onClose, onPortSelected, onOpenBoardPor
             style={{
               padding: '12px 16px',
               fontSize: '12.5px',
-              color: '#00979d',
+              color: '#ff9e00',
               backgroundColor: 'transparent',
               display: 'flex',
               alignItems: 'center',

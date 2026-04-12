@@ -16,6 +16,7 @@ import { useMemoryStore, parseTelemetryLine } from "../store/useMemoryStore";
 import { MemoryDashboard } from "./MemoryDashboard";
 import { DebugToolbar } from "./DebugToolbar";
 import { BOARDS } from "../data/boards";
+import { getFileIcon } from "../lib/fileIcons";
 // Material Icons
 import FolderOpenIcon from "@mui/icons-material/FolderOpenOutlined";
 import ExtensionIcon from "@mui/icons-material/ExtensionOutlined";
@@ -794,7 +795,20 @@ export function IDELayout() {
             className={`ide-tab ${activeFile === tab.path ? "ide-tab--active" : ""}`}
             style={{ display: "flex", alignItems: "center", gap: "6px" }}
           >
-            <InsertDriveFileIcon sx={{ fontSize: 13, opacity: 0.6 }} />
+            {(() => {
+              const iconInfo = getFileIcon(tab.name, false, false);
+              const isRust = tab.name.toLowerCase().endsWith(".rs");
+              return (
+                <span style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  fontSize: isRust ? "18px" : "15px", 
+                  color: iconInfo.color 
+                }}>
+                  {iconInfo.icon}
+                </span>
+              );
+            })()}
             {tab.name}
             <div 
               className="ide-tab-close" 

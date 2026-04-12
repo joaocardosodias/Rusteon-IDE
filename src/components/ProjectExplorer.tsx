@@ -4,12 +4,12 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useIDEStore } from "../store/useIDEStore";
 
 // Icons
-import FolderIcon from "@mui/icons-material/Folder";
-import FolderOpenIcon from "@mui/icons-material/FolderOpen";
-import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
-import SettingsApplicationsIcon from "@mui/icons-material/SettingsApplications";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import FolderIcon from "@mui/icons-material/Folder";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+
+import { getFileIcon } from "../lib/fileIcons";
 
 interface FileNode {
   name: string;
@@ -138,8 +138,8 @@ function TreeNode({ node, depth }: { node: FileNode; depth: number }) {
   const [expanded, setExpanded] = useState(false);
   const { setActiveFile, setContent, addLog, addOpenTab } = useIDEStore();
 
-  const isRust = node.name.endsWith(".rs");
-  const isToml = node.name.endsWith(".toml");
+  const iconInfo = getFileIcon(node.name, node.is_dir, expanded);
+  const isRust = node.name.toLowerCase().endsWith(".rs");
 
   const handleFileClick = async () => {
     if (node.is_dir) {
@@ -172,16 +172,17 @@ function TreeNode({ node, depth }: { node: FileNode; depth: number }) {
         onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.04)")}
         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
       >
-        <span style={{ marginRight: "6px", display: "flex", alignItems: "center", opacity: node.is_dir ? 0.7 : 1 }}>
-          {node.is_dir ? (
-            expanded ? <ExpandMoreIcon sx={{ fontSize: 16 }} /> : <ChevronRightIcon sx={{ fontSize: 16 }} />
-          ) : isRust ? (
-            <SettingsApplicationsIcon sx={{ fontSize: 14, color: "#dea54b" }} />
-          ) : isToml ? (
-            <SettingsApplicationsIcon sx={{ fontSize: 14, color: "#e06c75" }} />
-          ) : (
-            <InsertDriveFileOutlinedIcon sx={{ fontSize: 14, color: "#5c6370" }} />
-          )}
+        <span style={{ marginRight: "4px", display: "flex", alignItems: "center", opacity: 0.5 }}>
+          {node.is_dir ? (expanded ? <ExpandMoreIcon sx={{ fontSize: 13 }} /> : <ChevronRightIcon sx={{ fontSize: 13 }} />) : <span style={{ width: 13 }} />}
+        </span>
+        <span style={{ 
+          marginRight: "6px", 
+          display: "flex", 
+          alignItems: "center", 
+          fontSize: isRust ? "20px" : "18px",
+          color: iconInfo.color
+        }}>
+          {iconInfo.icon}
         </span>
         <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {node.name}
