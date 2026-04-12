@@ -109,11 +109,11 @@ pub fn create_new_project(
         .arg("--bin")
         .current_dir(&parent_path)
         .output()
-        .map_err(|e| format!("Falha ao invocar cargo new: {}", e))?;
+        .map_err(|e| format!("Failed to invoke cargo new: {}", e))?;
 
     if !output.status.success() {
         return Err(format!(
-            "Falha no cargo new. std_err: {}",
+            "cargo new failed. std_err: {}",
             String::from_utf8_lossy(&output.stderr)
         ));
     }
@@ -142,7 +142,7 @@ fn apply_esp_template(app: &tauri::AppHandle, project_path: &PathBuf, chip: &str
 
     // 1. Overwrite main.rs
     fs::copy(tpl_dir.join("main.rs"), project_path.join("src").join("main.rs"))
-        .map_err(|e| format!("Erro ao copiar main.rs do template: {}", e))?;
+        .map_err(|e| format!("Error copying main.rs from template: {}", e))?;
 
     // 2. Intelligent Merge Cargo.toml using toml_edit
     let target_toml = project_path.join("Cargo.toml");
@@ -166,13 +166,13 @@ fn apply_esp_template(app: &tauri::AppHandle, project_path: &PathBuf, chip: &str
     let dot_cargo = project_path.join(".cargo");
     fs::create_dir_all(&dot_cargo).map_err(|e| e.to_string())?;
     fs::copy(tpl_dir.join(".cargo").join("config.toml"), dot_cargo.join("config.toml"))
-        .map_err(|e| format!("Erro config.toml: {}", e))?;
+        .map_err(|e| format!("Config.toml error: {}", e))?;
 
     // 4. Copy rust-toolchain.toml (if it exists)
     let tc_path = tpl_dir.join("rust-toolchain.toml");
     if tc_path.exists() {
         fs::copy(&tc_path, project_path.join("rust-toolchain.toml"))
-            .map_err(|e| format!("Erro ao copiar rust-toolchain.toml: {}", e))?;
+            .map_err(|e| format!("Error copying rust-toolchain.toml: {}", e))?;
     }
 
     Ok(())

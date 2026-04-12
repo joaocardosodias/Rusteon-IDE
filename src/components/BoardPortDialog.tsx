@@ -49,7 +49,7 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
     if (!open) return;
     invoke<{ installed_targets: string[] }>('check_installed_targets')
       .then(res => setInstalledTargets(res.installed_targets))
-      .catch(err => console.error("Falha ao checar boards:", err));
+      .catch(err => console.error("Failed to check boards:", err));
   }, [open]);
 
   // Reset temp state when opening

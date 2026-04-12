@@ -295,13 +295,25 @@ export function IDELayout() {
         return next.length > 800 ? next.slice(next.length - 800) : next;
       });
     };
+    
+    const handleGlobalLog = (e: any) => {
+      const { text, type } = e.detail;
+      setOutputLines(prev => {
+        const next = [...prev, { text, type: type || "plain" }];
+        return next.length > 500 ? next.slice(next.length - 500) : next;
+      });
+      setActiveBottomTab("out");
+    };
+
     window.addEventListener("dap-rtt-log", handleDapRtt);
+    window.addEventListener("ide-global-log", handleGlobalLog);
 
     return () => {
       unlistenBuild.then(f => f());
       unlistenFlash.then(f => f());
       unlistenSerial.then(f => f());
       window.removeEventListener("dap-rtt-log", handleDapRtt);
+      window.removeEventListener("ide-global-log", handleGlobalLog);
     };
   }, []);
 
@@ -370,6 +382,16 @@ export function IDELayout() {
       const saved = await autoSaveActiveFile();
       if (!saved) { setIsBuilding(false); return; }
 
+      // Target Installation Check
+      if (selectedBoardDef) {
+        const state = await invoke<{ installed_targets: string[] }>("check_installed_targets");
+        if (!state.installed_targets.includes(selectedBoardDef.target)) {
+          setOutputLines(prev => [...prev, { text: `[Error] ${selectedBoardDef.name} is NOT INSTALLED! Please open the Board Manager and install it before building.`, type: "err" }]);
+          setIsBuilding(false);
+          return;
+        }
+      }
+
       const res = await invoke<string>("build_project", { projectPath: activeProjectPath });
       setOutputLines(prev => [...prev, { text: `✓ ${res}`, type: "ok" }]);
       setFeatureDiagnostics([]); // clear on success
@@ -430,7 +452,7 @@ export function IDELayout() {
             target = selectedBoardDef.target;
             setOutputLines(prev => [...prev, { text: `✓ Configurações do projeto sincronizadas.`, type: "ok" }]);
           } catch (err: any) {
-            setOutputLines(prev => [...prev, { text: `[Aviso] Falha ao atualizar config.toml: ${err}`, type: "warn" }]);
+            setOutputLines(prev => [...prev, { text: `[Warning] Failed to update config.toml: ${err}`, type: "warn" }]);
           }
         }
       }
@@ -492,6 +514,16 @@ export function IDELayout() {
       const saved = await autoSaveActiveFile();
       if (!saved) { setIsFlashing(false); return; }
 
+      // 1.1 Target Installation Check
+      if (selectedBoardDef) {
+        const state = await invoke<{ installed_targets: string[] }>("check_installed_targets");
+        if (!state.installed_targets.includes(selectedBoardDef.target)) {
+          setOutputLines(prev => [...prev, { text: `[Error] ${selectedBoardDef.name} is NOT INSTALLED! Please open the Board Manager and install it before uploading.`, type: "err" }]);
+          setIsFlashing(false);
+          return;
+        }
+      }
+
       // 1.5. Target Sync Check
       if (selectedBoardDef) {
         const currentTarget = await invoke<string>("get_project_target", { projectPath: activeProjectPath });
@@ -504,7 +536,7 @@ export function IDELayout() {
               await invoke("update_cargo_target", { projectPath: activeProjectPath, newTarget: selectedBoardDef.target });
               setOutputLines(prev => [...prev, { text: `✓ Configurações do projeto sincronizadas.`, type: "ok" }]);
             } catch (err: any) {
-              setOutputLines(prev => [...prev, { text: `[Aviso] Falha ao atualizar config.toml: ${err}`, type: "warn" }]);
+              setOutputLines(prev => [...prev, { text: `[Warning] Failed to update config.toml: ${err}`, type: "warn" }]);
             }
           }
         }

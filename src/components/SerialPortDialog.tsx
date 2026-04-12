@@ -94,7 +94,7 @@ export function SerialPortDialog({ open, onClose, onPortSelected, onOpenBoardPor
         top: '100%',
         left: 0,
         marginTop: '6px',
-        backgroundColor: '#2b3036',
+        backgroundColor: 'var(--ide-toolbar)',
         border: '1px solid var(--ide-accent)',
         borderRadius: '8px',
         boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
@@ -107,8 +107,11 @@ export function SerialPortDialog({ open, onClose, onPortSelected, onOpenBoardPor
         onClick={onClose}
         style={{
           padding: '10px 14px',
-          borderBottom: '1px solid var(--ide-teal-dim)',
-          backgroundColor: '#2b3036'
+          backgroundColor: 'var(--ide-toolbar)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          outline: 'none'
         }}
       >
         <span style={{ fontSize: '14px', color: '#e0e2e5' }}>Select Board</span>
@@ -116,6 +119,7 @@ export function SerialPortDialog({ open, onClose, onPortSelected, onOpenBoardPor
           <path d="M6 9l6 6 6-6" />
         </svg>
       </div>
+      <div style={{ height: '1px', backgroundColor: 'rgba(255, 255, 255, 0.05)' }} />
 
       {/* Content */}
       <div className="overflow-auto" style={{ maxHeight: '320px' }}>
@@ -172,8 +176,10 @@ export function SerialPortDialog({ open, onClose, onPortSelected, onOpenBoardPor
                   className="flex items-center gap-4 text-left transition-colors"
                   style={{
                     padding: '12px 14px',
-                    borderBottom: '1px solid var(--ide-teal-dim)',
-                    backgroundColor: isActive ? 'rgba(0, 151, 157, 0.1)' : 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    backgroundColor: isActive ? 'var(--ide-accent-dim)' : 'transparent',
+                    borderLeft: isActive ? '3px solid var(--ide-accent)' : '3px solid transparent'
                   }}
                   onMouseEnter={(e) => {
                     if (!isActive) {
@@ -209,7 +215,8 @@ export function SerialPortDialog({ open, onClose, onPortSelected, onOpenBoardPor
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              borderTop: '1px solid rgba(255, 158, 0, 0.15)',
+              border: 'none',
+              borderTop: '1px solid var(--ide-border)'
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.backgroundColor = 'rgba(255, 158, 0, 0.06)';
