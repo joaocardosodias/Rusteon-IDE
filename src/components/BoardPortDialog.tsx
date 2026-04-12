@@ -20,9 +20,9 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
 
   const [boardSearch, setBoardSearch] = useState('');
   const [tempBoard, setTempBoard] = useState<string | null>(selectedBoard);
-  const [tempPort, setTempPort]   = useState<string | null>(selectedPort);
-  const [ports, setPorts]         = useState<string[]>([]);
-  const [showAll, setShowAll]     = useState(false);
+  const [tempPort, setTempPort] = useState<string | null>(selectedPort);
+  const [ports, setPorts] = useState<string[]>([]);
+  const [showAll, setShowAll] = useState(false);
   const [installedTargets, setInstalledTargets] = useState<string[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -97,8 +97,8 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
         style={{
           width: '680px',
           maxHeight: '540px',
-          backgroundColor: '#1e2227',
-          border: '1px solid #3a3f4b',
+          backgroundColor: '#141517',
+          border: '1px solid #2a2c2f',
           borderRadius: '8px',
           boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
           display: 'flex',
@@ -112,8 +112,8 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '14px 18px',
-          borderBottom: '1px solid #2a2f3b',
-          backgroundColor: '#252930',
+          borderBottom: '1px solid #2a2c2f',
+          backgroundColor: '#1c1e21',
         }}>
           <span style={{ fontSize: '15px', fontWeight: 700, color: '#d4d4d4', letterSpacing: '0.2px' }}>
             Select Other Board and Port
@@ -135,8 +135,8 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
         {/* Subtitle */}
         <div style={{
           padding: '10px 18px',
-          borderBottom: '1px solid #1a1d22',
-          backgroundColor: '#1e2227',
+          borderBottom: '1px solid #080808',
+          backgroundColor: '#141517',
         }}>
           <p style={{ fontSize: '12px', color: '#888', lineHeight: 1.6 }}>
             Select both a <strong style={{ color: '#aaa' }}>Board</strong> and a <strong style={{ color: '#aaa' }}>Port</strong> if you want to upload a sketch.<br />
@@ -152,23 +152,23 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
             width: '50%',
             display: 'flex',
             flexDirection: 'column',
-            borderRight: '1px solid #2a2f3b',
+            borderRight: '1px solid #2a2c2f',
           }}>
             <div style={{
               padding: '10px 12px 8px',
-              borderBottom: '1px solid #2a2f3b',
-              backgroundColor: '#252930',
+              borderBottom: '1px solid #2a2c2f',
+              backgroundColor: '#1c1e21',
             }}>
-              <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#00979d', letterSpacing: '1px', textTransform: 'uppercase' }}>
+              <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#ff9e00', letterSpacing: '1px', textTransform: 'uppercase' }}>
                 Boards
               </span>
             </div>
 
             {/* Search */}
-            <div style={{ padding: '8px 12px', borderBottom: '1px solid #1a1d22' }}>
+            <div style={{ padding: '8px 12px', borderBottom: '1px solid #080808' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '6px',
-                background: '#161a1e', border: '1px solid #383d49',
+                background: '#0d0e10', border: '1px solid #2a2c2f',
                 borderRadius: '5px', padding: '5px 10px',
               }}>
                 <SearchIcon sx={{ fontSize: 14, color: '#555' }} />
@@ -214,7 +214,7 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
                       onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'; }}
                       onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
                     >
-                      <DeveloperBoardIcon sx={{ fontSize: 16, color: isActive ? '#00979d' : '#555', flexShrink: 0 }} />
+                      <DeveloperBoardIcon sx={{ fontSize: 16, color: isActive ? '#ff9e00' : '#555', flexShrink: 0 }} />
                       <div>
                         <div style={{ fontSize: '12.5px', fontWeight: 600, color: isActive ? '#cdd6f4' : '#bbb' }}>
                           {board.name}
@@ -247,10 +247,10 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
           <div style={{ width: '50%', display: 'flex', flexDirection: 'column' }}>
             <div style={{
               padding: '10px 12px 8px',
-              borderBottom: '1px solid #2a2f3b',
-              backgroundColor: '#252930',
+              borderBottom: '1px solid #2a2c2f',
+              backgroundColor: '#1c1e21',
             }}>
-              <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#00979d', letterSpacing: '1px', textTransform: 'uppercase' }}>
+              <span style={{ fontSize: '10.5px', fontWeight: 700, color: '#ff9e00', letterSpacing: '1px', textTransform: 'uppercase' }}>
                 Ports
               </span>
             </div>
@@ -279,21 +279,21 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
                         width: '100%', textAlign: 'left', padding: '10px 14px',
                         border: 'none', cursor: 'pointer',
                         backgroundColor: isActive ? 'rgba(255, 158, 0, 0.15)' : 'transparent',
-                        borderBottom: '1px solid #1a1d22',
+                        borderBottom: '1px solid #080808',
                         display: 'flex', alignItems: 'center', gap: '10px',
                         transition: 'background 120ms ease',
                       }}
                       onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'; }}
                       onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = 'transparent'; }}
                     >
-                      <UsbIcon sx={{ fontSize: 16, color: isActive ? '#00979d' : '#555', flexShrink: 0 }} />
+                      <UsbIcon sx={{ fontSize: 16, color: isActive ? '#ff9e00' : '#555', flexShrink: 0 }} />
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: '12.5px', color: isActive ? '#cdd6f4' : '#bbb' }}>
                           {port} {isUSB ? 'Serial Port (USB)' : 'Serial Port'}
                         </div>
                       </div>
                       {isActive && (
-                        <CheckIcon sx={{ fontSize: 15, color: '#00979d' }} />
+                        <CheckIcon sx={{ fontSize: 15, color: '#ff9e00' }} />
                       )}
                     </button>
                   );
@@ -304,7 +304,7 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
             {/* Show all ports checkbox */}
             <div style={{
               padding: '10px 14px',
-              borderTop: '1px solid #2a2f3b',
+              borderTop: '1px solid #2a2c2f',
               display: 'flex', alignItems: 'center', gap: '8px',
             }}>
               <input
@@ -312,7 +312,7 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
                 type="checkbox"
                 checked={showAll}
                 onChange={(e) => setShowAll(e.target.checked)}
-                style={{ cursor: 'pointer', accentColor: '#00979d' }}
+                style={{ cursor: 'pointer', accentColor: '#ff9e00' }}
               />
               <label htmlFor="show-all-ports" style={{ fontSize: '12px', color: '#888', cursor: 'pointer' }}>
                 Show all ports
@@ -324,8 +324,8 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
         {/* Footer */}
         <div style={{
           padding: '10px 18px',
-          borderTop: '1px solid #2a2f3b',
-          backgroundColor: '#252930',
+          borderTop: '1px solid #2a2c2f',
+          backgroundColor: '#1c1e21',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -335,8 +335,8 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
             {!tempBoard
               ? 'Please pick a board to continue.'
               : !tempPort
-              ? 'Please pick a board connected to the port you have selected.'
-              : `Ready to upload to ${BOARDS.find(b => b.id === tempBoard)?.name || tempBoard}`
+                ? 'Please pick a board connected to the port you have selected.'
+                : `Ready to upload to ${BOARDS.find(b => b.id === tempBoard)?.name || tempBoard}`
             }
           </span>
 
@@ -368,13 +368,13 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
                 padding: '6px 22px', borderRadius: '5px', fontSize: '12.5px',
                 fontWeight: 700, cursor: tempBoard ? 'pointer' : 'not-allowed',
                 border: 'none',
-                backgroundColor: tempBoard ? '#00979d' : '#1e5f63',
-                color: '#fff',
-                opacity: tempBoard ? 1 : 0.6,
+                backgroundColor: tempBoard ? 'var(--ide-orange)' : 'var(--ide-btn-dark)',
+                color: tempBoard ? '#fff' : '#666',
+                opacity: tempBoard ? 1 : 1,
                 transition: 'background 120ms ease',
               }}
-              onMouseEnter={(e) => { if (tempBoard) e.currentTarget.style.backgroundColor = '#00b3ba'; }}
-              onMouseLeave={(e) => { if (tempBoard) e.currentTarget.style.backgroundColor = '#00979d'; }}
+              onMouseEnter={(e) => { if (tempBoard) e.currentTarget.style.backgroundColor = 'var(--ide-orange-hover)'; }}
+              onMouseLeave={(e) => { if (tempBoard) e.currentTarget.style.backgroundColor = 'var(--ide-orange)'; }}
             >
               OK
             </button>
