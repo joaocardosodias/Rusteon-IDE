@@ -53,6 +53,9 @@ interface EditorState {
   setIsBuilding: (status: boolean) => void;
   setFeatureDiagnostics: (diags: FeatureDiagnostic[]) => void;
   setStandardErrors: (errors: StandardDiagnostic[]) => void;
+  alertConfig: { open: boolean; title: string; message: string };
+  showAlert: (title: string, message: string) => void;
+  closeAlert: () => void;
 }
 
 interface ProjectState {
@@ -108,6 +111,9 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   setIsBuilding: (status) => set({ isBuilding: status }),
   setFeatureDiagnostics: (diags) => set({ featureDiagnostics: diags }),
   setStandardErrors: (errors) => set({ standardErrors: errors }),
+  alertConfig: { open: false, title: '', message: '' },
+  showAlert: (title, message) => set({ alertConfig: { open: true, title, message } }),
+  closeAlert: () => set((state) => ({ alertConfig: { ...state.alertConfig, open: false } })),
   
   // Project state
   activeProjectPath: null,

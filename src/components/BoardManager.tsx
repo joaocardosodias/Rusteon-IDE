@@ -313,16 +313,6 @@ export function BoardManager() {
                     </div>
 
                     <div className="bm-card-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <select className="bm-version-select" onChange={(e) => {
-                        if (e.target.value === 'other') {
-                          alert(`Additional version manager for ${board.name} will be available in future updates.`);
-                          e.target.value = board.halVersion;
-                        }
-                      }}>
-                        <option value={board.halVersion}>v{board.halVersion} (Current)</option>
-                        <option value="other">Download other versions...</option>
-                      </select>
-
                       <button
                         className="bm-btn-ghost"
                         onClick={() => openUrl(board.infoUrl)}
@@ -331,6 +321,16 @@ export function BoardManager() {
                       >
                         <InfoOutlinedIcon sx={{ fontSize: 15 }} />
                       </button>
+
+                      <select className="bm-version-select" onChange={(e) => {
+                        if (e.target.value === 'other') {
+                          useIDEStore.getState().showAlert("Notice", `Additional version manager for ${board.name} will be available in future updates.`);
+                          e.target.value = board.halVersion;
+                        }
+                      }}>
+                        <option value={board.halVersion}>v{board.halVersion} (Current)</option>
+                        <option value="other">Download other versions...</option>
+                      </select>
 
                       {state.status === 'checking' ? (
                         <button className="bm-btn bm-btn--progress" disabled>
