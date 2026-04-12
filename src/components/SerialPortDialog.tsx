@@ -95,7 +95,7 @@ export function SerialPortDialog({ open, onClose, onPortSelected, onOpenBoardPor
         left: 0,
         marginTop: '6px',
         backgroundColor: '#2b3036',
-        border: '1px solid var(--ide-teal)',
+        border: '1px solid var(--ide-accent)',
         borderRadius: '8px',
         boxShadow: '0 8px 30px rgba(0,0,0,0.6)',
         overflow: 'hidden',
@@ -209,10 +209,10 @@ export function SerialPortDialog({ open, onClose, onPortSelected, onOpenBoardPor
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              borderTop: '1px solid rgba(0,151,157,0.15)',
+              borderTop: '1px solid rgba(255, 158, 0, 0.15)',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(0,151,157,0.06)';
+              e.currentTarget.style.backgroundColor = 'rgba(255, 158, 0, 0.06)';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = 'transparent';

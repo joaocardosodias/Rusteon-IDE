@@ -130,9 +130,9 @@ export const ARCH_LABELS: Record<Arch, string> = {
 };
 
 export const ARCH_COLORS: Record<Arch, string> = {
-  riscv: '#56b6c2',
-  xtensa: '#e5c07b',
-  arm: '#c678dd',
+  riscv: '#ba5b0ce3', // Orange-400
+  xtensa: '#f59e0b', // Amber-500
+  arm: '#ffffffef',    // Light Gray
 };
 
 export function getBoardsByVendor(): Record<string, BoardDefinition[]> {

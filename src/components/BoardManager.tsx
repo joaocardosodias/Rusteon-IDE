@@ -350,7 +350,7 @@ export function BoardManager() {
                         className="bm-btn-ghost"
                         onClick={() => openUrl(board.infoUrl)}
                         title="Official Site / More Info"
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', color: 'var(--ide-teal)', background: 'rgba(0,151,157,0.1)', border: '1px solid rgba(0,151,157,0.3)', cursor: 'pointer', borderRadius: '4px' }}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', color: 'var(--ide-accent)', background: 'rgba(255, 158, 0, 0.1)', border: '1px solid rgba(255, 158, 0, 0.3)', cursor: 'pointer', borderRadius: '4px' }}
                       >
                         <InfoOutlinedIcon sx={{ fontSize: 15 }} />
                       </button>

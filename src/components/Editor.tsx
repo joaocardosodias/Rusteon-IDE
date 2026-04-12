@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Editor as MonacoEditor } from "@monaco-editor/react";
+import MonacoEditor from "@monaco-editor/react";
 import { useIDEStore } from "../store/useIDEStore";
 import { useDebugStore } from "../store/useDebugStore";
 import { LspClient } from "../api/lspClient";
@@ -333,9 +333,6 @@ export function Editor() {
         const file = getActiveFile();
         if (file && line) {
           useDebugStore.getState().toggleBreakpoint(file, line);
-          
-          // Todo: Se estiver rodando o Debugger, enviar a atualização imediata via DAP:
-          // DapClient.setBreakpoints(file, new_bp_array)
         }
       }
     });
@@ -344,6 +341,38 @@ export function Editor() {
     if (lspRef.current && lspRef.current.isInitialized) {
       setupMonacoProviders();
     }
+  };
+
+  const handleBeforeMount = (monaco: any) => {
+    monaco.editor.defineTheme("ferris-dark", {
+      base: "vs-dark",
+      inherit: true,
+      rules: [
+        { token: "keyword", foreground: "f87171", fontStyle: "bold" },
+        { token: "identifier.function", foreground: "fbbf24" },
+        { token: "type.identifier", foreground: "facc15" },
+        { token: "string", foreground: "a3e635" },
+        { token: "number", foreground: "fb923c" },
+        { token: "comment", foreground: "5a5f66" },
+        { token: "keyword.directive", foreground: "f97316" }, // Macros/Directivas
+        { token: "annotation", foreground: "60a5fa" },
+      ],
+      colors: {
+        "editor.background": "#13151864",
+        "editor.foreground": "#e2e4e7",
+        "editor.lineHighlightBackground": "#18191b",
+        "editor.selectionBackground": "#ff9e0022",
+        "editor.inactiveSelectionBackground": "#ff9e0011",
+        "editorCursor.foreground": "#ff9e00",
+        "editorWhitespace.foreground": "#2a2c2f",
+        "editorIndentGuide.background": "#1c1e21",
+        "editorIndentGuide.activeBackground": "#2a2c2f",
+        "editorLineNumber.foreground": "#5a5f66",
+        "editorLineNumber.activeForeground": "#ff9e00",
+        "editorWidget.background": "#141517",
+        "editorWidget.border": "#080808",
+      },
+    });
   };
 
   const handleEditorChange = (value: string | undefined) => {
@@ -361,41 +390,47 @@ export function Editor() {
   };
 
   return (
-    <MonacoEditor
-      height="100%"
-      defaultLanguage="rust"
-      theme="vs-dark"
-      value={content}
-      onChange={handleEditorChange}
-      onMount={handleEditorDidMount}
-      options={{
-        minimap: { enabled: true },
-        fontSize: 13,
-        fontFamily: "JetBrains Mono, Fira Code, 'Courier New', monospace",
-        lineHeight: 21,
-        cursorBlinking: "smooth",
-        smoothScrolling: true,
-        contextmenu: true,
-        renderLineHighlight: "line",
-        lineNumbers: "on",
-        glyphMargin: true, 
-        folding: true,
-        padding: { top: 10 },
-        scrollbar: {
-          vertical: "visible",
-          horizontal: "visible",
-          useShadows: false,
-          verticalScrollbarSize: 8,
-          horizontalScrollbarSize: 8,
-        },
-        fixedOverflowWidgets: true,
-        // Force widgets to be appended directly to the HTML body
-        // This makes it physically impossible for them to be clipped by overflow:hidden 
-        overflowWidgetsDomNode: document.body,
-        hover: {
-          above: true
-        }
-      }}
-    />
+    <div style={{ height: '100%', background: '#0d0e10' }}>
+      <MonacoEditor
+        height="100%"
+        defaultLanguage="rust"
+        theme="ferris-dark"
+        value={content}
+        onChange={handleEditorChange}
+        onMount={handleEditorDidMount}
+        beforeMount={handleBeforeMount}
+        loading={<div style={{ color: '#5a5f66', background: '#0d0e10', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading Editor...</div>}
+        options={{
+          minimap: { enabled: false },
+          fontSize: 13.5,
+          fontFamily: "'JetBrainsMono Nerd Font', 'JetBrains Mono', 'Fira Code', monospace",
+          lineHeight: 22,
+          cursorBlinking: "smooth",
+          smoothScrolling: true,
+          contextmenu: true,
+          renderLineHighlight: "line",
+          lineNumbers: "relative",
+          glyphMargin: true, 
+          folding: true,
+          padding: { top: 12 },
+          bracketPairColorization: { enabled: true },
+          scrollbar: {
+            vertical: "visible",
+            horizontal: "visible",
+            useShadows: false,
+            verticalScrollbarSize: 8,
+            horizontalScrollbarSize: 8,
+          },
+          fixedOverflowWidgets: true,
+          overflowWidgetsDomNode: document.body,
+          scrollBeyondLastLine: false,
+          stickyScroll: { enabled: false },
+          hover: {
+            above: true,
+            delay: 400
+          }
+        }}
+      />
+    </div>
   );
 }

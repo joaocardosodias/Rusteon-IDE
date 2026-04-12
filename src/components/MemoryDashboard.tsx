@@ -119,19 +119,19 @@ function Sparkline({ history }: { history: MemorySnapshot[] }) {
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block' }}>
         <defs>
           <linearGradient id="spark-area-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#50fa7b" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#50fa7b" stopOpacity="0.02" />
+            <stop offset="0%" stopColor="var(--ide-accent)" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="var(--ide-accent)" stopOpacity="0.02" />
           </linearGradient>
         </defs>
         <path d={areaPath} fill="url(#spark-area-grad)" />
         <polyline
           points={pts}
           fill="none"
-          stroke="#50fa7b"
+          stroke="var(--ide-accent)"
           strokeWidth="1.8"
           strokeLinecap="round"
           strokeLinejoin="round"
-          style={{ filter: 'drop-shadow(0 0 4px #50fa7b88)' }}
+          style={{ filter: 'drop-shadow(0 0 4px var(--ide-accent))' }}
         />
         {/* Current point */}
         {history.length > 0 && (() => {
@@ -139,8 +139,8 @@ function Sparkline({ history }: { history: MemorySnapshot[] }) {
           const x = W - pad;
           const y = H - pad - ((last.free - minF) / range) * (H - pad * 2);
           return (
-            <circle cx={x} cy={y} r="3" fill="#50fa7b"
-              style={{ filter: 'drop-shadow(0 0 4px #50fa7b)' }} />
+            <circle cx={x} cy={y} r="3" fill="var(--ide-accent)"
+              style={{ filter: 'drop-shadow(0 0 4px var(--ide-accent))' }} />
           );
         })()}
       </svg>
@@ -155,21 +155,21 @@ function UsageBar({ heapR, stackR, freeR }: { heapR: number; stackR: number; fre
       <div className="mem2-bar-track">
         <div className="mem2-bar-seg" style={{
           width: `${heapR * 100}%`,
-          background: 'linear-gradient(90deg, #8be9fd88, #8be9fd)',
+          background: 'linear-gradient(90deg, var(--ide-accent), var(--ide-accent-hover))',
         }} />
         <div className="mem2-bar-seg" style={{
           width: `${stackR * 100}%`,
-          background: 'linear-gradient(90deg, #ff79c688, #ff79c6)',
+          background: 'linear-gradient(90deg, var(--ide-orange), var(--ide-orange-hover))',
         }} />
         <div className="mem2-bar-seg" style={{
           width: `${freeR * 100}%`,
-          background: 'linear-gradient(90deg, #50fa7b44, #50fa7b22)',
+          background: 'rgba(255,255,255,0.05)',
         }} />
       </div>
       <div className="mem2-bar-legend">
-        <span><span className="mem2-dot" style={{ background: '#8be9fd' }} />Heap</span>
-        <span><span className="mem2-dot" style={{ background: '#ff79c6' }} />Stack</span>
-        <span><span className="mem2-dot" style={{ background: '#50fa7b' }} />Free</span>
+        <span><span className="mem2-dot" style={{ background: 'var(--ide-accent)' }} />Heap</span>
+        <span><span className="mem2-dot" style={{ background: 'var(--ide-orange)' }} />Stack</span>
+        <span><span className="mem2-dot" style={{ background: 'rgba(255,255,255,0.4)' }} />Free</span>
       </div>
     </div>
   );
@@ -221,8 +221,8 @@ export function MemoryDashboard() {
             ratio={freeR}
             label="FREE"
             value={fmtShort(latest.free)}
-            color="#50fa7b"
-            glowColor="#50fa7b66"
+            color="var(--ide-accent)"
+            glowColor="rgba(255, 158, 0, 0.4)"
             gradId="free-rad"
           />
           <div className="mem2-used-label">
@@ -234,19 +234,19 @@ export function MemoryDashboard() {
         <div className="mem2-right">
           <MetricCard
             icon="◈" label="Heap" value={fmt(latest.heap)}
-            sub={`${Math.round(heapR * 100)}% of total`} color="#8be9fd"
+            sub={`${Math.round(heapR * 100)}% of total`} color="var(--ide-accent)"
           />
           <MetricCard
             icon="◇" label="Stack" value={fmt(latest.stack)}
-            sub={`${Math.round(stackR * 100)}% of total`} color="#ff79c6"
+            sub={`${Math.round(stackR * 100)}% of total`} color="var(--ide-orange)"
           />
           <MetricCard
             icon="◉" label="Free" value={fmt(latest.free)}
-            sub={`${Math.round(freeR * 100)}% available`} color="#50fa7b"
+            sub={`${Math.round(freeR * 100)}% available`} color="var(--ide-text-muted)"
           />
           <MetricCard
             icon="▣" label="Total RAM" value={fmt(total)}
-            color="#6272a4"
+            color="var(--ide-text-faint)"
           />
         </div>
       </div>

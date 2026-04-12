@@ -870,7 +870,7 @@ export function IDELayout() {
                     </p>
                     <button
                       className="ide-tab-add"
-                      style={{ marginTop: '20px', padding: '6px 16px', borderRadius: '4px', backgroundColor: 'var(--ide-teal)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600 }}
+                      style={{ marginTop: '20px', padding: '6px 16px', borderRadius: '4px', backgroundColor: 'var(--ide-accent)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '12.5px', fontWeight: 600 }}
                       onClick={handleOpenFolder}
                     >
                       Open Project
@@ -1112,7 +1112,7 @@ export function IDELayout() {
                        marginBottom: '4px', borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: '2px',
                        wordBreak: "break-all"
                      }}>
-                       <span style={{ color: log.dir === 'in' ? 'var(--syn-str)' : log.dir === 'out' ? 'var(--ide-teal)' : 'inherit', marginRight: '8px' }}>
+                       <span style={{ color: log.dir === 'in' ? 'var(--syn-str)' : log.dir === 'out' ? 'var(--ide-accent)' : 'inherit', marginRight: '8px' }}>
                          [{log.dir.toUpperCase()}]
                        </span>
                        [{log.time}] {log.msg}
