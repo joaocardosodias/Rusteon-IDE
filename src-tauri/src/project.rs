@@ -227,6 +227,37 @@ pub fn detect_cargo_target(project_path: String) -> Result<Option<String>, Strin
         }
     }
 
+    // Fallback: Infer from Cargo.toml dependencies (esp-hal, embassy-rp, etc.)
+    let cargo_path = Path::new(&project_path).join("Cargo.toml");
+    if cargo_path.exists() {
+        if let Ok(content) = fs::read_to_string(&cargo_path) {
+            if let Ok(doc) = content.parse::<toml_edit::DocumentMut>() {
+                if let Some(deps) = doc.get("dependencies").and_then(|i| i.as_table()) {
+                    // Raspberry Pi Pico (RP2040)
+                    if deps.contains_key("rp2040-hal") || deps.contains_key("embassy-rp") || deps.contains_key("rp-pico") || deps.contains_key("rp2040-pac") {
+                        return Ok(Some("thumbv6m-none-eabi".to_string()));
+                    }
+                    
+                    // ESP Series inference from esp-hal
+                    if let Some(esp_hal) = deps.get("esp-hal") {
+                        let features_str = esp_hal.to_string();
+                        if features_str.contains("\"esp32\"") {
+                            return Ok(Some("xtensa-esp32-none-elf".to_string()));
+                        } else if features_str.contains("\"esp32s2\"") {
+                            return Ok(Some("xtensa-esp32s2-none-elf".to_string()));
+                        } else if features_str.contains("\"esp32s3\"") {
+                            return Ok(Some("xtensa-esp32s3-none-elf".to_string()));
+                        } else if features_str.contains("\"esp32c3\"") {
+                            return Ok(Some("riscv32imc-unknown-none-elf".to_string()));
+                        } else if features_str.contains("\"esp32c6\"") {
+                            return Ok(Some("riscv32imac-unknown-none-elf".to_string()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(None)
 }
 

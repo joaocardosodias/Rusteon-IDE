@@ -103,7 +103,7 @@ export const BOARDS: BoardDefinition[] = [
     installMethod: 'rustup',
     hal: 'rp-hal',
     halVersion: '0.10.0',
-    flashTool: 'probe-rs',
+    flashTool: 'elf2uf2-rs',
     description: 'Dual-core ARM Cortex-M0+, 264KB SRAM, Programmable I/O (PIO).',
     infoUrl: 'https://www.raspberrypi.com/documentation/microcontrollers/rp2040.html',
   },
