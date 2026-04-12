@@ -384,6 +384,7 @@ pub fn run() {
             lsp::stop_lsp,
             lsp::send_lsp_message,
             project::detect_cargo_target,
+            project::update_cargo_target,
             debugger::check_probers_installed,
             debugger::install_probers,
             debugger::get_project_target,

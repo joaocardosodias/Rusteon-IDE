@@ -14,6 +14,7 @@ import { useDebugStore } from "../store/useDebugStore";
 import { DapClient } from "../api/dapClient";
 import { useMemoryStore, parseTelemetryLine } from "../store/useMemoryStore";
 import { MemoryDashboard } from "./MemoryDashboard";
+import { DebugToolbar } from "./DebugToolbar";
 import { BOARDS } from "../data/boards";
 // Material Icons
 import FolderOpenIcon from "@mui/icons-material/FolderOpenOutlined";
@@ -283,10 +284,23 @@ export function IDELayout() {
         return next.length > 800 ? next.slice(next.length - 800) : next;
       });
     });
+
+    const handleDapRtt = (e: any) => {
+      const { text, type } = e.detail;
+      const now = new Date();
+      const ts = now.toLocaleTimeString('en-US', { hour12: false }) + '.' + now.getMilliseconds().toString().padStart(3, '0');
+      setSerialLines(prev => {
+        const next: LogLine[] = [...prev, { text, type: type || "plain", timestamp: ts }];
+        return next.length > 800 ? next.slice(next.length - 800) : next;
+      });
+    };
+    window.addEventListener("dap-rtt-log", handleDapRtt);
+
     return () => {
       unlistenBuild.then(f => f());
       unlistenFlash.then(f => f());
       unlistenSerial.then(f => f());
+      window.removeEventListener("dap-rtt-log", handleDapRtt);
     };
   }, []);
 
@@ -396,23 +410,31 @@ export function IDELayout() {
       }
 
       // ── Step 2: Detect build target / hardware compatibility ─
-      const target = await invoke<string>("get_project_target", { projectPath: activeProjectPath });
-      setOutputLines(prev => [...prev, { text: `ℹ Target: ${target}`, type: "dim" }]);
-
-      const isClassicXtensa = target.startsWith("xtensa-esp32-none"); // Classic ESP32
-      const isModern = target.includes("riscv") || target.includes("xtensa-esp32s3") || target.includes("xtensa-esp32s2") || target.includes("xtensa-esp32c");
-
-      if (isClassicXtensa && !isModern) {
-        setOutputLines(prev => [...prev, {
-          text: "⚠ ESP32 Classic detected. Hardware debugging (breakpoints, RTT) requires an external JTAG probe (e.g. ESP-Prog). Continuing, but connection will fail without it...",
-          type: "warn"
-        }]);
-      } else if (target === "unknown") {
-        setOutputLines(prev => [...prev, {
-          text: "⚠ Could not detect build target. Continuing, but debug may not work for all boards.",
-          type: "warn"
-        }]);
+      if (!selectedBoardDef) {
+        setOutputLines(prev => [...prev, { text: "⚠ No board selected. Debug may fail.", type: "warn" }]);
+      } else if (selectedBoardDef.arch === "xtensa") {
+        alert("O Modo Hardware Debug (Breakpoints) requer o probe-rs, que suporta APENAS chips ARM ou RISC-V.\n\nPara a placa ESP32 Clássica ou derivadas Xtensa, por favor utilize a Depuração Serial acompanhada do Live Memory Dashboard.");
+        setDebugState("idle");
+        return;
       }
+
+      let target = await invoke<string>("get_project_target", { projectPath: activeProjectPath });
+      
+      if (selectedBoardDef && target !== "unknown" && target !== selectedBoardDef.target) {
+        const proceed = window.confirm(`Inconsistência de Placa detectada!\n\nVocê selecionou '${selectedBoardDef.name}', mas o projeto está configurado para '${target}'.\n\nDeseja alterar as configurações do projeto para iniciar a depuração corretamente na placa selecionada?`);
+        if (proceed) {
+          setOutputLines(prev => [...prev, { text: `> Sincronizando alvo para: ${selectedBoardDef.target}...`, type: "dim" }]);
+          try {
+            await invoke("update_cargo_target", { projectPath: activeProjectPath, newTarget: selectedBoardDef.target });
+            target = selectedBoardDef.target;
+            setOutputLines(prev => [...prev, { text: `✓ Configurações do projeto sincronizadas.`, type: "ok" }]);
+          } catch (err: any) {
+            setOutputLines(prev => [...prev, { text: `[Aviso] Falha ao atualizar config.toml: ${err}`, type: "warn" }]);
+          }
+        }
+      }
+
+      setOutputLines(prev => [...prev, { text: `ℹ Target: ${target} | Chip: ${selectedBoardDef?.chip || "unknown"}`, type: "dim" }]);
 
       // ── Step 3: Build ELF ────────────────────────────────────
       setDebugState("building");
@@ -431,9 +453,10 @@ export function IDELayout() {
       setOutputLines(prev => [...prev, { text: `✓ probe-rs dap-server listening on port ${port}`, type: "ok" }]);
 
       // ── Step 5: Connect DAP client ───────────────────────────
+      const chipName = selectedBoardDef ? selectedBoardDef.chip.toLowerCase() : "esp32c3";
       await DapClient.init();
       await DapClient.initialize();
-      await DapClient.launch(elfPath);
+      await DapClient.launch(elfPath, chipName);
 
     } catch (e: any) {
       setOutputLines(prev => [...prev, { text: `[Debug Error] ${e}`, type: "err" }]);
@@ -467,6 +490,24 @@ export function IDELayout() {
       // 1. Auto-save before any compilation
       const saved = await autoSaveActiveFile();
       if (!saved) { setIsFlashing(false); return; }
+
+      // 1.5. Target Sync Check
+      if (selectedBoardDef) {
+        const currentTarget = await invoke<string>("get_project_target", { projectPath: activeProjectPath });
+        if (currentTarget !== "unknown" && currentTarget !== selectedBoardDef.target) {
+          const proceed = window.confirm(`Inconsistência de Placa detectada!\n\nVocê selecionou '${selectedBoardDef.name}' na Interface, mas o projeto está configurado internamente para compilar para '${currentTarget}'.\n\nDeseja alterar as configurações do projeto (.cargo/config.toml) para garantir que a compilação funcione na placa que você selecionou?`);
+          
+          if (proceed) {
+            setOutputLines(prev => [...prev, { text: `> Sincronizando alvo para: ${selectedBoardDef.target} (${selectedBoardDef.chip})...`, type: "dim" }]);
+            try {
+              await invoke("update_cargo_target", { projectPath: activeProjectPath, newTarget: selectedBoardDef.target });
+              setOutputLines(prev => [...prev, { text: `✓ Configurações do projeto sincronizadas.`, type: "ok" }]);
+            } catch (err: any) {
+              setOutputLines(prev => [...prev, { text: `[Aviso] Falha ao atualizar config.toml: ${err}`, type: "warn" }]);
+            }
+          }
+        }
+      }
 
       // 2. Build
       setOutputLines(prev => [...prev, { text: "> cargo build --release", type: "prompt" }]);
@@ -733,7 +774,9 @@ export function IDELayout() {
         </button>
       </div>
 
-      {/* ── TAB BAR ───────────────────────────────────────────────────── */}
+      <DebugToolbar />
+
+      {/* ── IDE Main Area ─────────────────────────────────────────────────── */}
       <div className={`ide-tabbar ${openTabs.length === 0 ? "ide-tabbar--hidden" : ""}`}>
         {openTabs.map((tab) => (
           <div

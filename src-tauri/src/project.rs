@@ -229,3 +229,28 @@ pub fn detect_cargo_target(project_path: String) -> Result<Option<String>, Strin
 
     Ok(None)
 }
+
+#[tauri::command]
+pub fn update_cargo_target(project_path: String, new_target: String) -> Result<(), String> {
+    let config_path = Path::new(&project_path).join(".cargo").join("config.toml");
+    if !config_path.exists() {
+        return Err("Arquivo .cargo/config.toml não encontrado no projeto.".to_string());
+    }
+
+    let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
+    let mut doc = content.parse::<toml_edit::DocumentMut>().map_err(|e| e.to_string())?;
+
+    {
+        // Certifica-se de que [build] existe
+        let build = doc.entry("build").or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
+        
+        if let Some(build_table) = build.as_table_mut() {
+            build_table.insert("target", toml_edit::value(new_target));
+        } else {
+            return Err("Seção [build] no config.toml malformada.".to_string());
+        }
+    }
+
+    fs::write(&config_path, doc.to_string()).map_err(|e| e.to_string())?;
+    Ok(())
+}
