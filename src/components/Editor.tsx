@@ -405,7 +405,31 @@ export function Editor() {
         "editorLineNumber.foreground": "#5a5f66",
         "editorLineNumber.activeForeground": "#ff9e00",
         "editorWidget.background": "#141517",
-        "editorWidget.border": "#080808",
+        "editorWidget.border": "#2a2c2f",
+        "editorSuggestWidget.background": "#1c1e21",
+        "editorSuggestWidget.border": "#2a2c2f",
+        "editorSuggestWidget.foreground": "#cdd6f4",
+        "editorSuggestWidget.highlightForeground": "#ff9e00",
+        "editorSuggestWidget.focusHighlightForeground": "#ff9e00",
+        "editorSuggestWidget.selectedBackground": "#ff9e0033",
+        "editorSuggestWidget.selectedForeground": "#ffffff",
+        "menu.background": "#1c1e21",
+        "menu.selectionBackground": "#ff9e0033",
+        "menu.foreground": "#cdd6f4",
+        "menu.selectionForeground": "#ffffff",
+        // Hover / diagnostic widget
+        "editorHoverWidget.background": "#1a1c20",
+        "editorHoverWidget.border": "#2a2c2f",
+        "editorHoverWidget.foreground": "#c9d1d9",
+        "editorHoverWidget.statusBarBackground": "#141517",
+        "editorHoverWidget.highlightForeground": "#ff9e00",
+        // Links inside hover
+        "textLink.foreground": "#ff9e00",
+        "textLink.activeForeground": "#ffb732",
+        // Error/warning squiggle colours
+        "editorError.foreground": "#f87171",
+        "editorWarning.foreground": "#fbbf24",
+        "editorInfo.foreground": "#60a5fa",
       },
     });
   };
@@ -457,7 +481,6 @@ export function Editor() {
             horizontalScrollbarSize: 8,
           },
           fixedOverflowWidgets: true,
-          overflowWidgetsDomNode: document.body,
           scrollBeyondLastLine: false,
           stickyScroll: { enabled: false },
           hover: {

@@ -1,7 +1,6 @@
 import { useIDEStore } from '../store/useIDEStore';
 import DeveloperBoardIcon from '@mui/icons-material/DeveloperBoard';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
-import CircleIcon from '@mui/icons-material/Circle';
 
 interface BoardSelectorButtonProps {
   activeBoard: string;
@@ -15,38 +14,26 @@ export function BoardSelectorButton({ activeBoard }: BoardSelectorButtonProps) {
     <button
       onClick={() => setSerialDialogOpen(true)}
       className="board-selector"
-      title="Selecionar Placa / Porta"
+      title="Select Board / Port"
+      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 12px' }}
     >
       {/* Board icon */}
-      <DeveloperBoardIcon sx={{ fontSize: 15, color: 'var(--ide-accent)', flexShrink: 0 }} />
+      <DeveloperBoardIcon sx={{ fontSize: 18, color: 'var(--ide-accent)', flexShrink: 0 }} />
 
       {/* Text block */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: '110px' }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
         <span style={{
-          fontSize: '12.5px',
+          fontSize: '13px',
           fontWeight: 700,
           color: '#d4d4d4',
           letterSpacing: '0.2px',
-          lineHeight: 1.2,
         }}>
           {activeBoard}
-        </span>
-        <span style={{
-          fontSize: '10px',
-          color: selectedPort ? '#6a9f6c' : '#555',
-          lineHeight: 1.3,
-          marginTop: '1px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-        }}>
-          <CircleIcon sx={{ fontSize: 6, color: selectedPort ? '#6a9f6c' : '#3a3f4b' }} />
-          {selectedPort || 'no port selected'}
         </span>
       </div>
 
       {/* Chevron */}
-      <KeyboardArrowDownIcon sx={{ fontSize: 15, color: '#555', flexShrink: 0 }} />
+      <KeyboardArrowDownIcon sx={{ fontSize: 16, color: '#6a6c6e', flexShrink: 0, marginLeft: '2px' }} />
     </button>
   );
 }

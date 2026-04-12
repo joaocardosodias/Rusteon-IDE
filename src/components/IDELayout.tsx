@@ -7,6 +7,7 @@ import { Editor } from "./Editor";
 import { BoardSelectorButton } from "./BoardSelectorButton";
 import { SerialPortDialog } from "./SerialPortDialog";
 import { BoardPortDialog } from "./BoardPortDialog";
+import { AlertDialog } from "./AlertDialog";
 import { ProjectExplorer } from "./ProjectExplorer";
 import { ProjectWizard } from "./ProjectWizard";
 import { useIDEStore } from "../store/useIDEStore";
@@ -43,7 +44,7 @@ import SettingsEthernetIcon from "@mui/icons-material/SettingsEthernet";
 import KeyboardDoubleArrowDownIcon from "@mui/icons-material/KeyboardDoubleArrowDown";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import ClearAllIcon from "@mui/icons-material/ClearAll";
+import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import MemoryIcon from "@mui/icons-material/Memory";
 
@@ -67,7 +68,6 @@ export function IDELayout() {
   const [activeBottomTab, setActiveBottomTab] = useState<BTab>("out");
   const [outputLines, setOutputLines] = useState<LogLine[]>([
     { text: "Rusteon IDE v0.1 — Ready", type: "dim" },
-    { text: "waiting...", type: "dim" },
   ]);
   const [serialLines, setSerialLines] = useState<LogLine[]>([
     { text: "── Serial Monitor ──", type: "dim" },
@@ -93,6 +93,7 @@ export function IDELayout() {
   const selectedPort    = useIDEStore((state) => state.selectedPort);
   const selectedBoard   = useIDEStore((state) => state.selectedBoard);
   const setSelectedBoard = useIDEStore((state) => state.setSelectedBoard);
+  const showAlert = useIDEStore((state) => state.showAlert);
 
   // Project state
   const activeProjectPath = useIDEStore((state) => state.activeProjectPath);
@@ -436,7 +437,7 @@ export function IDELayout() {
       if (!selectedBoardDef) {
         setOutputLines(prev => [...prev, { text: "⚠ No board selected. Debug may fail.", type: "warn" }]);
       } else if (selectedBoardDef.arch === "xtensa") {
-        alert("O Modo Hardware Debug (Breakpoints) requer o probe-rs, que suporta APENAS chips ARM ou RISC-V.\n\nPara a placa ESP32 Clássica ou derivadas Xtensa, por favor utilize a Depuração Serial acompanhada do Live Memory Dashboard.");
+        showAlert("Hardware Debug Info", "Hardware Debug mode (Breakpoints) requires probe-rs, which ONLY supports ARM or RISC-V chips.\n\nFor the Classic ESP32 or Xtensa derivatives, please use Serial Debugging along with the Live Memory Dashboard.");
         setDebugState("idle");
         return;
       }
@@ -689,15 +690,6 @@ export function IDELayout() {
       window.removeEventListener("mouseup", onSideMouseUp);
     };
   }, [isSideDragging, onSideMouseMove, onSideMouseUp]);
-
-  const logColor = (type: LogLine["type"]) => {
-    if (type === "ok") return "var(--syn-str)";
-    if (type === "err") return "#e06c75";
-    if (type === "warn") return "var(--syn-num)";
-    if (type === "dim") return "var(--ide-text-faint)";
-    if (type === "prompt") return "var(--syn-fn)";
-    return "var(--ide-text)";
-  };
 
   const sidebarLabel = ["Explorer", "Boards", "Libraries", "Examples", "Search", "Settings"];
   
@@ -996,7 +988,6 @@ export function IDELayout() {
                 ))}
                 <div className="console-line">
                   <span style={{ color: "var(--syn-fn)" }}>&gt;</span>{" "}
-                  <span style={{ color: "var(--ide-text-faint)" }}>waiting...</span>{" "}
                   <span className="t-blink" />
                 </div>
               </div>
@@ -1038,7 +1029,7 @@ export function IDELayout() {
                       onClick={() => setSerialLines([{ text: "── Serial Monitor ──", type: "dim" }])}
                       title="Clear Output"
                     >
-                      <ClearAllIcon sx={{ fontSize: 16 }} />
+                      <DeleteOutlinedIcon sx={{ fontSize: 16 }} />
                     </button>
                     <button
                       className="serial-icon-btn"
@@ -1148,7 +1139,7 @@ export function IDELayout() {
               <div className="ide-output-console lsp-console" style={{ position: "relative", display: "flex", flexDirection: "column" }}>
                  <div className="serial-toolbar" style={{ position: "absolute", top: 0, right: 0, zIndex: 10, background: "var(--ide-bg)", padding: "4px" }}>
                    <button className="serial-icon-btn" onClick={clearLspLogs} title="Clear LSP Logs">
-                     <ClearAllIcon sx={{ fontSize: 16 }} />
+                     <DeleteOutlinedIcon sx={{ fontSize: 16 }} />
                    </button>
                  </div>
                  <div style={{ flex: 1, overflowY: "auto", padding: "30px 10px 10px", fontSize: "11px", fontFamily: "monospace" }} ref={lspRefLocal}>
@@ -1199,6 +1190,7 @@ export function IDELayout() {
         onClose={() => setBoardPortDialogOpen(false)}
         onConfirm={handleConfirmBoardPort}
       />
+      <AlertDialog />
 
       <ProjectWizard />
 
