@@ -2505,6 +2505,45 @@ select {
   border-color: var(--ide-accent);
 }
 
+/* ─── Error Lens ───────────────────────────────────────────────────────────── */
+.error-lens-widget {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  font-style: italic;
+  opacity: 0.75;
+  pointer-events: none;
+  white-space: nowrap;
+  padding-left: 16px;
+  line-height: inherit;
+}
+
+.error-lens-error {
+  color: #f87171;
+}
+
+.error-lens-warning {
+  color: #fbbf24;
+}
+
+.error-lens-info {
+  color: #60a5fa;
+}
+
+.error-lens-line-bg.error-lens-error-bg {
+  background: rgba(248, 113, 113, 0.06) !important;
+  border-left: 2px solid rgba(248, 113, 113, 0.45) !important;
+}
+
+.error-lens-line-bg.error-lens-warning-bg {
+  background: rgba(251, 191, 36, 0.06) !important;
+  border-left: 2px solid rgba(251, 191, 36, 0.45) !important;
+}
+
+.error-lens-line-bg.error-lens-info-bg {
+  background: rgba(96, 165, 250, 0.06) !important;
+  border-left: 2px solid rgba(96, 165, 250, 0.45) !important;
+}
+
 /* ── Memory Panel & Dashboard V2 ───────────────────────────────────────── */
 .memory-panel {
   display: flex;
