@@ -45,6 +45,7 @@ interface EditorState {
   addOpenTab: (tab: OpenTab) => void;
   removeOpenTab: (path: string) => void;
   addLog: (log: string) => void;
+  addOutputLog: (text: string, type?: "ok" | "err" | "warn" | "dim" | "prompt" | "plain") => void;
   clearLogs: () => void;
   setLspStatus: (status: LspStatus) => void;
   addLspLog: (log: LspLog) => void;
@@ -86,7 +87,17 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
     }
     return { openTabs: newTabs };
   }),
-  addLog: (log) => set((state) => ({ logs: [...state.logs, `[${new Date().toLocaleTimeString()}] ${log}`] })),
+  addLog: (log) => {
+    let type = "dim";
+    if (log.startsWith("[Error]")) type = "err";
+    else if (log.startsWith("✓")) type = "ok";
+    else if (log.startsWith(">")) type = "prompt";
+    
+    window.dispatchEvent(new CustomEvent("ide-global-log", { detail: { text: log, type } }));
+  },
+  addOutputLog: (text, type = "plain") => {
+    window.dispatchEvent(new CustomEvent("ide-global-log", { detail: { text, type } }));
+  },
   clearLogs: () => set({ logs: [] }),
   setLspStatus: (status) => set({ lspStatus: status }),
   addLspLog: (log) => set((state) => {

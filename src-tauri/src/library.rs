@@ -21,7 +21,7 @@ pub fn get_project_libraries(project_path: String) -> Result<Vec<LibraryInfo>, S
     }
 
     let content = fs::read_to_string(&manifest_path).map_err(|e| e.to_string())?;
-    let parsed: Value = toml::from_str(&content).map_err(|e| format!("Falha de sintaxe no Cargo.toml: {}", e))?;
+    let parsed: Value = toml::from_str(&content).map_err(|e| format!("Syntax failure in Cargo.toml: {}", e))?;
 
     let mut libraries = Vec::new();
 

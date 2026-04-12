@@ -77,14 +77,14 @@ fn load_persisted_state() -> PersistedState {
 
 fn save_persisted_state(state: &PersistedState) -> Result<(), String> {
     let dir = get_config_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Erro ao criar diretório: {}", e))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Error creating directory: {}", e))?;
     let json = serde_json::to_string_pretty(state).map_err(|e| e.to_string())?;
     std::fs::write(dir.join("boards.json"), json).map_err(|e| e.to_string())
 }
 
 fn save_install_log(target: &str, content: &str) -> Result<(), String> {
     let dir = get_log_dir();
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Erro ao criar dir de logs: {}", e))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Error creating logs directory: {}", e))?;
     let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
     let filename = format!("{}_{}.log", target.replace('/', "_"), timestamp);
     std::fs::write(dir.join(filename), content).map_err(|e| e.to_string())
@@ -108,7 +108,7 @@ fn get_serial_ports() -> Result<Vec<String>, String> {
                 .collect();
             Ok(port_names)
         }
-        Err(e) => Err(format!("Erro ao obter portas seriais: {}", e)),
+        Err(e) => Err(format!("Error getting serial ports: {}", e)),
     }
 }
 
@@ -119,7 +119,7 @@ fn check_installed_targets() -> Result<BoardInstallState, String> {
     let rustup_output = Command::new("rustup")
         .args(["target", "list", "--installed"])
         .output()
-        .map_err(|e| format!("rustup não encontrado: {}", e))?;
+        .map_err(|e| format!("rustup not found: {}", e))?;
 
     let real_targets: Vec<String> = String::from_utf8_lossy(&rustup_output.stdout)
         .lines()
@@ -168,7 +168,7 @@ async fn install_board_target(
 ) -> Result<String, String> {
     let current = check_installed_targets()?;
     if current.installed_targets.contains(&target) {
-        return Ok(format!("{} já está instalado", target));
+        return Ok(format!("{} is already installed", target));
     }
 
     let emit_progress = |app: &tauri::AppHandle, line: &str, stream: &str| {
@@ -182,7 +182,7 @@ async fn install_board_target(
         );
     };
 
-    emit_progress(&app, &format!("> Instalando target: {}", target), "info");
+    emit_progress(&app, &format!("> Installing target: {}", target), "info");
 
     let mut log_content = String::new();
 
@@ -195,7 +195,7 @@ async fn install_board_target(
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| format!("Falha ao executar rustup: {}", e))?;
+                .map_err(|e| format!("Failed to execute rustup: {}", e))?;
 
             if let Some(stdout) = child.stdout.take() {
                 let reader = BufReader::new(stdout);
@@ -224,10 +224,10 @@ async fn install_board_target(
                     InstallComplete {
                         target: target.clone(),
                         success: false,
-                        message: "Instalação falhou".to_string(),
+                        message: "Installation failed".to_string(),
                     },
                 );
-                return Err(format!("rustup target add falhou com código {}", status));
+                return Err(format!("rustup target add failed with code {}", status));
             }
         }
         InstallMethod::Espup => {
@@ -244,7 +244,7 @@ async fn install_board_target(
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| format!("Falha ao executar espup: {}. Certifique-se que espup está instalado (cargo install espup).", e))?;
+                .map_err(|e| format!("Failed to execute espup: {}. Make sure espup is installed (cargo install espup).", e))?;
 
             if let Some(stdout) = child.stdout.take() {
                 let reader = BufReader::new(stdout);
@@ -273,10 +273,10 @@ async fn install_board_target(
                     InstallComplete {
                         target: target.clone(),
                         success: false,
-                        message: "espup install falhou".to_string(),
+                        message: "espup install failed".to_string(),
                     },
                 );
-                return Err(format!("espup install falhou com código {}", status));
+                return Err(format!("espup install failed with code {}", status));
             }
         }
     }
@@ -298,11 +298,11 @@ async fn install_board_target(
         InstallComplete {
             target: target.clone(),
             success: true,
-            message: format!("✓ {} instalado com sucesso", target),
+            message: format!("✓ {} successfully installed", target),
         },
     );
 
-    Ok(format!("✓ {} instalado com sucesso", target))
+    Ok(format!("✓ {} successfully installed", target))
 }
 
 #[tauri::command]
@@ -313,7 +313,7 @@ fn remove_board_target(target: String) -> Result<String, String> {
         persisted.last_check = chrono::Local::now().to_rfc3339();
         let _ = save_persisted_state(&persisted);
         return Ok(format!(
-            "✓ {} removido do estado (toolchain Xtensa mantida)",
+            "✓ {} removed from state (Xtensa toolchain maintained)",
             target
         ));
     }
@@ -321,14 +321,14 @@ fn remove_board_target(target: String) -> Result<String, String> {
     let output = Command::new("rustup")
         .args(["target", "remove", &target])
         .output()
-        .map_err(|e| format!("Falha ao executar rustup: {}", e))?;
+        .map_err(|e| format!("Failed to execute rustup: {}", e))?;
 
     if output.status.success() {
         let mut persisted = load_persisted_state();
         persisted.installed_targets.retain(|t| t != &target);
         persisted.last_check = chrono::Local::now().to_rfc3339();
         let _ = save_persisted_state(&persisted);
-        Ok(format!("✓ {} removido", target))
+        Ok(format!("✓ {} removed", target))
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
     }

@@ -12,13 +12,13 @@ import MemoryIcon from '@mui/icons-material/Memory';
 import ErrorOutlinedIcon from '@mui/icons-material/ErrorOutlined';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { useIDEStore } from '../store/useIDEStore';
 
 type InstallStatus = 'idle' | 'checking' | 'installing' | 'installed' | 'removing' | 'error';
 
 interface BoardState {
   status: InstallStatus;
   progress: number;
-  log: string[];
   error?: string;
 }
 
@@ -44,15 +44,13 @@ export function BoardManager() {
   const [boardStates, setBoardStates] = useState<Record<string, BoardState>>(() => {
     const initial: Record<string, BoardState> = {};
     BOARDS.forEach((b) => {
-      initial[b.id] = { status: 'checking', progress: 0, log: [] };
+      initial[b.id] = { status: 'checking', progress: 0 };
     });
     return initial;
   });
-  const [expandedLog, setExpandedLog] = useState<string | null>(null);
   const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
   const [espupAvailable, setEspupAvailable] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const logEndRef = useRef<Record<string, HTMLDivElement | null>>({});
 
   // ── Load installed state on mount ──
   const loadInstalledState = useCallback(async () => {
@@ -76,7 +74,7 @@ export function BoardManager() {
       });
       setLoaded(true);
     } catch (err) {
-      console.error('Falha ao checar targets instalados:', err);
+      console.error('Failed to check installed targets:', err);
       setBoardStates((prev) => {
         const next = { ...prev };
         BOARDS.forEach((b) => {
@@ -101,18 +99,7 @@ export function BoardManager() {
 
     const setup = async () => {
       unlistenProgress = await listen<InstallProgress>('install-progress', (event) => {
-        const { target, line } = event.payload;
-        const board = BOARDS.find((b) => b.target === target);
-        if (!board) return;
-
-        const ts = new Date().toTimeString().slice(0, 8);
-        setBoardStates((prev) => ({
-          ...prev,
-          [board.id]: {
-            ...prev[board.id],
-            log: [...prev[board.id].log, `[${ts}] ${line}`],
-          },
-        }));
+        // Log streaming disabled as per user request
       });
 
       unlistenComplete = await listen<InstallComplete>('install-complete', (event) => {
@@ -127,7 +114,6 @@ export function BoardManager() {
             status: success ? 'installed' : 'error',
             progress: success ? 100 : 0,
             error: success ? undefined : message,
-            log: [...prev[board.id].log, `[${new Date().toTimeString().slice(0, 8)}] ${message}`],
           },
         }));
       });
@@ -140,12 +126,7 @@ export function BoardManager() {
     };
   }, []);
 
-  // ── Auto-scroll log ──
-  useEffect(() => {
-    if (expandedLog && logEndRef.current[expandedLog]) {
-      logEndRef.current[expandedLog]?.scrollIntoView({ behavior: 'smooth' });
-    }
-  });
+  // ── Auto-scroll log removed ──
 
   // ── Filtering ──
   const filteredBoards = BOARDS.filter(
@@ -178,9 +159,8 @@ export function BoardManager() {
 
     setBoardStates((prev) => ({
       ...prev,
-      [board.id]: { status: 'installing', progress: 10, log: [] },
+      [board.id]: { status: 'installing', progress: 10 },
     }));
-    setExpandedLog(board.id);
 
     try {
       await invoke<string>('install_board_target', {
@@ -196,7 +176,6 @@ export function BoardManager() {
           status: 'error',
           progress: 0,
           error: String(err),
-          log: [...prev[board.id].log, `[ERROR] ${String(err)}`],
         },
       }));
     }
@@ -209,7 +188,7 @@ export function BoardManager() {
 
     setBoardStates((prev) => ({
       ...prev,
-      [board.id]: { status: 'removing', progress: 50, log: [] },
+      [board.id]: { status: 'removing', progress: 50 },
     }));
 
     try {
@@ -218,9 +197,8 @@ export function BoardManager() {
       });
       setBoardStates((prev) => ({
         ...prev,
-        [board.id]: { status: 'idle', progress: 0, log: [] },
+        [board.id]: { status: 'idle', progress: 0 },
       }));
-      setExpandedLog(null);
     } catch (err) {
       setBoardStates((prev) => ({
         ...prev,
@@ -238,7 +216,7 @@ export function BoardManager() {
   const handleRetry = (board: BoardDefinition) => {
     setBoardStates((prev) => ({
       ...prev,
-      [board.id]: { status: 'idle', progress: 0, log: [], error: undefined },
+      [board.id]: { status: 'idle', progress: 0, error: undefined },
     }));
   };
 
@@ -296,7 +274,6 @@ export function BoardManager() {
 
               {!isCollapsed && boards.map((board) => {
                 const state = boardStates[board.id];
-                const isExpanded = expandedLog === board.id;
                 const archColor = ARCH_COLORS[board.arch];
                 const needsEspup = board.installMethod === 'espup' && !espupAvailable;
 
@@ -401,7 +378,7 @@ export function BoardManager() {
                           onClick={() => handleInstall(board)}
                           id={`install-board-${board.id}`}
                           disabled={needsEspup}
-                          title={needsEspup ? 'espup não encontrado. Instale com: cargo install espup' : undefined}
+                          title={needsEspup ? 'espup not found. Install with: cargo install espup' : undefined}
                         >
                           <DownloadIcon sx={{ fontSize: 13 }} />
                           {needsEspup ? 'NEED ESPUP' : 'INSTALL'}
@@ -423,34 +400,7 @@ export function BoardManager() {
                       </div>
                     )}
 
-                    {/* Install log */}
-                    {state.log.length > 0 && (
-                      <div className="bm-log-section">
-                        <button
-                          className="bm-log-toggle"
-                          onClick={() => setExpandedLog(isExpanded ? null : board.id)}
-                        >
-                          {isExpanded ? 'Hide log' : `View log (${state.log.length})`}
-                          {isExpanded
-                            ? <ExpandLessIcon sx={{ fontSize: 14 }} />
-                            : <ExpandMoreIcon sx={{ fontSize: 14 }} />
-                          }
-                        </button>
-                        {isExpanded && (
-                          <div className="bm-log-output">
-                            {state.log.map((line, i) => (
-                              <div key={i} className="bm-log-line">{line}</div>
-                            ))}
-                            {state.status === 'installing' && (
-                              <div className="bm-log-line">
-                                <span className="t-blink" />
-                              </div>
-                            )}
-                            <div ref={(el) => { logEndRef.current[board.id] = el; }} />
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {/* Local log section removed as per user request */}
                   </div>
                 );
               })}
