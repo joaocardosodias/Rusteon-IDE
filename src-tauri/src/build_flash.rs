@@ -71,16 +71,9 @@ pub async fn build_project(
 ) -> Result<String, String> {
     cancel_process(state.clone())?;
 
-    // ── Detect target triple from .cargo/config.toml ─────────────────────────
-    let cargo_config = std::path::Path::new(&project_path).join(".cargo/config.toml");
-    let target_triple: Option<String> = std::fs::read_to_string(&cargo_config)
-        .ok()
-        .and_then(|c| {
-            c.lines()
-                .find(|l| l.trim_start().starts_with("target") && l.contains('='))
-                .and_then(|l| l.split('=').nth(1))
-                .map(|s| s.trim().trim_matches('"').to_string())
-        });
+    // ── Detect target triple intelligently ───────────────────────────────────
+    let target_triple: Option<String> = crate::project::detect_cargo_target(project_path.clone())
+        .unwrap_or(None);
 
     let is_xtensa = target_triple
         .as_deref()
@@ -88,13 +81,21 @@ pub async fn build_project(
         .unwrap_or(false);
 
     // ── Build the command ─────────────────────────────────────────────────────
-    // For xtensa targets, force the +esp toolchain explicitly (it won't be
-    // picked up from rust-toolchain.toml when RUSTUP_TOOLCHAIN is stripped).
-    let mut cmd = if is_xtensa {
-        isolated_cargo_cmd(&["+esp", "build", "--release", "--color=never"], &project_path)
-    } else {
-        isolated_cargo_cmd(&["build", "--release", "--color=never"], &project_path)
-    };
+    let mut args = Vec::new();
+    if is_xtensa {
+        args.push("+esp");
+    }
+    args.push("build");
+    args.push("--release");
+    args.push("--color=never");
+
+    let target_str = target_triple.clone().unwrap_or_default();
+    if !target_str.is_empty() {
+        args.push("--target");
+        args.push(&target_str);
+    }
+
+    let mut cmd = isolated_cargo_cmd(&args, &project_path);
     // Restore CARGO_HOME so the user's own Cargo installation is used.
     if let Ok(home) = std::env::var("HOME") {
         let cargo_home = format!("{home}/.cargo");
@@ -102,6 +103,8 @@ pub async fn build_project(
             cmd.env("CARGO_HOME", cargo_home);
         }
     }
+
+    emit_log(&app, "ide-build-log", format!("> {:?}", cmd), "stdout");
 
     let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to spawn cargo build: {e}"))?;
@@ -163,24 +166,9 @@ pub async fn flash_firmware(
     cancel_process(state.clone())?;
 
     // ── Find the binary from cargo metadata ──────────────────────────────────
-    // Read .cargo/config.toml to get the target triple
-    let cargo_config_path = std::path::Path::new(&project_path)
-        .join(".cargo")
-        .join("config.toml");
-
-    let target_triple = if cargo_config_path.exists() {
-        let config_content = std::fs::read_to_string(&cargo_config_path)
-            .unwrap_or_default();
-        // Parse `target = "some-triple"` from [build] section
-        config_content
-            .lines()
-            .find(|l| l.trim_start().starts_with("target") && l.contains('='))
-            .and_then(|l| l.split('=').nth(1))
-            .map(|s| s.trim().trim_matches('"').to_string())
-            .unwrap_or_default()
-    } else {
-        String::new()
-    };
+    let target_triple = crate::project::detect_cargo_target(project_path.clone())
+        .unwrap_or(None)
+        .unwrap_or_default();
 
     // Read Cargo.toml to extract package name (used as binary name)
     let project_cargo = std::path::Path::new(&project_path).join("Cargo.toml");
@@ -227,6 +215,46 @@ pub async fn flash_firmware(
         c.arg("run").arg(&binary_path);
         c.current_dir(&project_path);
         c
+    } else if flash_tool.to_lowercase().contains("elf2uf2") {
+        let uf2_path = binary_path.with_extension("uf2");
+        let mut c = Command::new("elf2uf2-rs");
+        c.arg(&binary_path).arg(&uf2_path);
+        c.current_dir(&project_path);
+        
+        let mut child = match c.spawn() {
+            Ok(mut ch) => {
+                let _ = ch.wait(); // let it convert directly
+                ch
+            },
+            Err(e) => return Err(format!("Failed to spawn elf2uf2-rs: {}", e)),
+        };
+
+        // Custom robust copy to circumvent elf2uf2 -d bugs on Linux/Tauri
+        let user = std::env::var("USER").unwrap_or_else(|_| "root".into());
+        let possible_mounts = vec![
+            format!("/run/media/{}/RPI-RP2", user),
+            format!("/media/{}/RPI-RP2", user),
+            "/mnt/RPI-RP2".to_string(),
+            "/Volumes/RPI-RP2".to_string(), // macOS
+        ];
+
+        let mut mounted_path = None;
+        for path in possible_mounts {
+            if std::path::Path::new(&path).exists() {
+                mounted_path = Some(path);
+                break;
+            }
+        }
+
+        if let Some(mnt) = mounted_path {
+            let dest = std::path::Path::new(&mnt).join("flash.uf2");
+            match std::fs::copy(&uf2_path, &dest) {
+                Ok(_) => return Ok("Flash finished successfully (Copied via Rusteon IDE bypass)".into()),
+                Err(e) => return Err(format!("Copied UF2 failed: {}", e)),
+            }
+        } else {
+            return Err("Unable to find mounted pico (RPI-RP2 disk not found in /media or /run/media)".into());
+        }
     } else {
         // Generic cargo run fallback
         let mut c = Command::new("cargo");

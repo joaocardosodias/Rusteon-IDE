@@ -82,18 +82,27 @@ export function Editor() {
         if (currentFile && editorRef.current) {
           const model = editorRef.current.getModel();
           if (model && `file://${currentFile}` === uri) {
-            applyDiagnosticsToModel(model);
-
+            // NOTE: applyDiagnosticsToModel is already called for this model in the loop above.
+            
             // Error Lens — IContentWidget for each diagnostic
             const editor = editorRef.current;
             // Remove old widgets first
             (editor._errorLensWidgets || []).forEach((w: any) => editor.removeContentWidget(w));
             editor._errorLensWidgets = [];
 
+            // Group diagnostics by line to prevent overlapping. Show most severe active per line.
+            const grouped = new Map<number, any>();
             diagnostics.forEach((d: any) => {
+              const line = d.range.start.line + 1;
+              const existing = grouped.get(line);
+              if (!existing || d.severity < existing.severity) {
+                grouped.set(line, d);
+              }
+            });
+
+            grouped.forEach((d: any, line: number) => {
               const isError = d.severity === 1;
               const isWarning = d.severity === 2;
-              const line = d.range.start.line + 1;
               const maxCol = model.getLineMaxColumn(line);
               const shortMessage = d.message.split('\n')[0];
 
@@ -123,7 +132,7 @@ export function Editor() {
       if (started) {
         addLog("✓ rust-analyzer ready.");
         const file = getActiveFile();
-        if (file) {
+        if (file && file.endsWith('.rs')) {
           const val = editorRef.current ? editorRef.current.getValue() : content;
           lspRef.current.didOpen(file, val);
         }
@@ -138,35 +147,34 @@ export function Editor() {
     // Listen for LSP crash / close to auto-restart
     const unlistenClose = listen<string>("lsp-close", async () => {
       addLog("[LSP] Process exited. Attempting restart...");
-      if (lspRef.current) {
-        lspRef.current.isInitialized = false;
-      }
-      // Small delay before restart
-      setTimeout(() => startLsp(), 2000);
+      await startLsp();
     });
 
     return () => {
+      unlistenClose.then(f => f());
       if (lspRef.current) {
         lspRef.current.stop();
-        lspRef.current = null;
       }
-      unlistenClose.then(f => f());
-      // dispose language features
-      providersRef.current.forEach(p => p.dispose());
-      providersRef.current = [];
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProjectPath]);
+  }, [activeProjectPath, addLog]);
 
-  // ──── File opened ───────────────────────────────────────
+  // ──── LSP Active File Tracking ──────────────────────────────────────────────
   useEffect(() => {
-    if (lspRef.current && activeFile && lspRef.current.isInitialized) {
-      if (editorRef.current) {
-        const value = editorRef.current.getValue();
-        lspRef.current.didOpen(activeFile, value);
+    if (!lspRef.current || !activeFile || !activeFile.endsWith('.rs')) return;
+
+    let val = content;
+    if (editorRef.current) val = editorRef.current.getValue();
+    
+    // Tell LSP we opened this file
+    lspRef.current.didOpen(activeFile, val);
+
+    return () => {
+      if (lspRef.current && activeFile && activeFile.endsWith('.rs')) {
+        lspRef.current.didClose(activeFile);
       }
-    }
+    };
   }, [activeFile]);
+
 
   // ──── Reative Debugging Decorations ─────────────────────────────────────────
   useEffect(() => {
@@ -479,7 +487,7 @@ export function Editor() {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
       const file = getActiveFile();
-      if (lspRef.current && file) {
+      if (lspRef.current && file && file.endsWith('.rs')) {
         lspRef.current.didChange(val);
       }
     }, 300);

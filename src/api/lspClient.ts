@@ -113,11 +113,16 @@ export class LspClient {
         initializationOptions: {
           cargo: {
             ...(cargoTarget ? { target: cargoTarget } : {}),
-            allTargets: false
+            allTargets: false,
+            features: "all"
           },
           checkOnSave: {
             allTargets: false,
-            ...(cargoTarget ? { target: cargoTarget } : {})
+            ...(cargoTarget ? { targets: cargoTarget } : {})
+          },
+          check: {
+            allTargets: false,
+            ...(cargoTarget ? { targets: cargoTarget } : {})
           },
           diagnostics: {
             experimental: { enable: true }
@@ -175,6 +180,15 @@ export class LspClient {
         languageId: "rust",
         version: this.activeDocumentVersion,
         text: text
+      }
+    });
+  }
+
+  public async didClose(filePath: string) {
+    if (!this.isInitialized) return;
+    await this.sendNotification("textDocument/didClose", {
+      textDocument: {
+        uri: `file://${filePath}`
       }
     });
   }
