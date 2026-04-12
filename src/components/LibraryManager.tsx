@@ -276,11 +276,11 @@ export function LibraryManager() {
             style={{
               background: 'transparent',
               border: 'none',
-              color: activeTab === tab ? 'var(--ide-teal)' : 'var(--ide-text-faint)',
+              color: activeTab === tab ? 'var(--ide-accent)' : 'var(--ide-text-faint)',
               padding: '9px 8px 8px',
               fontSize: '11.5px',
               cursor: 'pointer',
-              borderBottom: activeTab === tab ? '2px solid var(--ide-teal)' : '2px solid transparent',
+              borderBottom: activeTab === tab ? '2px solid var(--ide-accent)' : '2px solid transparent',
               flex: 1,
               textTransform: 'capitalize',
               fontWeight: activeTab === tab ? 600 : 400,
@@ -321,10 +321,10 @@ export function LibraryManager() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: 'rgba(0,151,157,0.1)',
-              border: '1px solid rgba(0,151,157,0.3)',
+              background: 'rgba(255, 158, 0, 0.1)',
+              border: '1px solid rgba(255, 158, 0, 0.3)',
               borderRadius: '4px',
-              color: loadingSearch ? 'var(--ide-text-faint)' : 'var(--ide-teal)',
+              color: loadingSearch ? 'var(--ide-text-faint)' : 'var(--ide-accent)',
               padding: '0 7px',
               marginLeft: '6px',
               cursor: loadingSearch ? 'wait' : 'pointer',
@@ -357,7 +357,7 @@ export function LibraryManager() {
               return (
                 <div key={lib.name} className="bm-card" id={`lib-item-${lib.name}`}>
                   <div className="bm-card-header">
-                    <MenuBookIcon sx={{ fontSize: 18, color: 'var(--ide-teal)', flexShrink: 0 }} />
+                    <MenuBookIcon sx={{ fontSize: 18, color: 'var(--ide-accent)', flexShrink: 0 }} />
                     <div className="bm-card-info">
                       <div className="bm-card-name">{lib.name}</div>
                       <div className="bm-card-meta">
@@ -389,7 +389,7 @@ export function LibraryManager() {
                       className="bm-btn-ghost"
                       onClick={() => openUrl(`https://crates.io/crates/${lib.name}`)}
                       title="View on crates.io"
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', color: 'var(--ide-teal)', background: 'rgba(0,151,157,0.1)', border: '1px solid rgba(0,151,157,0.3)', cursor: 'pointer', borderRadius: '4px' }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', color: 'var(--ide-accent)', background: 'rgba(255, 158, 0, 0.1)', border: '1px solid rgba(255, 158, 0, 0.3)', cursor: 'pointer', borderRadius: '4px' }}
                     >
                       <InfoOutlinedIcon sx={{ fontSize: 15 }} />
                     </button>
@@ -440,7 +440,7 @@ export function LibraryManager() {
                   return (
                     <div key={lib.name} className="bm-card" id={`lib-search-${lib.name}`}>
                       <div className="bm-card-header">
-                        <MenuBookIcon sx={{ fontSize: 18, color: 'var(--ide-teal)', flexShrink: 0 }} />
+                        <MenuBookIcon sx={{ fontSize: 18, color: 'var(--ide-accent)', flexShrink: 0 }} />
                         <div className="bm-card-info">
                           <div className="bm-card-name">{lib.name}</div>
                           <div className="bm-card-meta">
@@ -472,7 +472,7 @@ export function LibraryManager() {
                           className="bm-btn-ghost"
                           onClick={() => openUrl(`https://crates.io/crates/${lib.name}`)}
                           title="View on crates.io"
-                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', color: 'var(--ide-teal)', background: 'rgba(0,151,157,0.1)', border: '1px solid rgba(0,151,157,0.3)', cursor: 'pointer', borderRadius: '4px' }}
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', color: 'var(--ide-accent)', background: 'rgba(255,158,0,0.1)', border: '1px solid rgba(255,158,0,0.3)', cursor: 'pointer', borderRadius: '4px' }}
                         >
                           <InfoOutlinedIcon sx={{ fontSize: 15 }} />
                         </button>
@@ -519,11 +519,11 @@ export function LibraryManager() {
                   return (
                     <div key={lib.name} className="bm-card" id={`lib-installed-${lib.name}`}>
                       <div className="bm-card-header">
-                        <MenuBookIcon sx={{ fontSize: 18, color: 'var(--ide-teal)', flexShrink: 0 }} />
+                        <MenuBookIcon sx={{ fontSize: 18, color: 'var(--ide-accent)', flexShrink: 0 }} />
                         <div className="bm-card-info">
                           <div className="bm-card-name">{lib.name}</div>
                           <div className="bm-card-meta">
-                            <span className="bm-arch-badge" style={{ color: 'var(--ide-teal)', borderColor: 'rgba(0,151,157,0.3)' }}>
+                            <span className="bm-arch-badge" style={{ color: 'var(--ide-accent)', borderColor: 'rgba(255, 158, 0, 0.3)' }}>
                               installed
                             </span>
                             <span className="bm-card-target">v{lib.version}</span>
@@ -553,7 +553,7 @@ export function LibraryManager() {
                           className="bm-btn-ghost"
                           onClick={() => openUrl(`https://crates.io/crates/${lib.name}`)}
                           title="View on crates.io"
-                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', color: 'var(--ide-teal)', background: 'rgba(0,151,157,0.1)', border: '1px solid rgba(0,151,157,0.3)', cursor: 'pointer', borderRadius: '4px' }}
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', color: 'var(--ide-accent)', background: 'rgba(255,158,0,0.1)', border: '1px solid rgba(255,158,0,0.3)', cursor: 'pointer', borderRadius: '4px' }}
                         >
                           <InfoOutlinedIcon sx={{ fontSize: 15 }} />
                         </button>
@@ -583,7 +583,7 @@ export function LibraryManager() {
           <div className="bm-diagnostics" style={{ padding: '8px 12px', flex: 1, overflowY: 'auto' }}>
             {featureDiagnostics.length === 0 ? (
               <div className="bm-empty">
-                <CheckCircleIcon sx={{ fontSize: 32, opacity: 0.3, color: 'var(--ide-teal)', mb: 1 }} />
+                <CheckCircleIcon sx={{ fontSize: 32, opacity: 0.3, color: 'var(--ide-accent)', mb: 1 }} />
                 <p>No missing features detected.</p>
                 <div style={{ fontSize: '11px', color: 'var(--ide-text-faint)', marginTop: '8px' }}>
                   Cargo will analyze your code when you Build.
@@ -625,7 +625,7 @@ export function LibraryManager() {
                       <div className="bm-card-actions" style={{ marginTop: '8px' }}>
                         <button
                           className="bm-btn bm-btn--install"
-                          style={{ background: 'var(--ide-teal)' }}
+                          style={{ background: 'var(--ide-accent)' }}
                           onClick={async () => {
                             if (!activeProjectPath) return;
                             try {

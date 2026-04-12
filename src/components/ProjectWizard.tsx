@@ -312,7 +312,7 @@ export function ProjectWizard() {
             <button className="pw-close" onClick={handleClose}><CloseOutlinedIcon sx={{ fontSize: 18 }} /></button>
           </div>
           <div className="pw-body" style={{ alignItems: "center", textAlign: "center", padding: "32px 16px" }}>
-            <CheckCircleOutlineIcon sx={{ fontSize: 56, color: "var(--ide-teal)", marginBottom: "8px" }} />
+            <CheckCircleOutlineIcon sx={{ fontSize: 56, color: "var(--ide-accent)", marginBottom: "8px" }} />
             <div style={{ fontSize: "15px", fontWeight: 600, color: "var(--ide-text)" }}>
               {projectName} is ready.
             </div>

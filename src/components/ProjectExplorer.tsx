@@ -78,7 +78,7 @@ export function ProjectExplorer() {
             marginTop: "20px",
             padding: "6px 16px",
             borderRadius: "4px",
-            backgroundColor: "var(--ide-teal)",
+            backgroundColor: "var(--ide-accent)",
             color: "#fff",
             border: "none",
             cursor: "pointer",

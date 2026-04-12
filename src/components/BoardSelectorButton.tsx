@@ -18,7 +18,7 @@ export function BoardSelectorButton({ activeBoard }: BoardSelectorButtonProps) {
       title="Selecionar Placa / Porta"
     >
       {/* Board icon */}
-      <DeveloperBoardIcon sx={{ fontSize: 15, color: 'var(--ide-teal)', flexShrink: 0 }} />
+      <DeveloperBoardIcon sx={{ fontSize: 15, color: 'var(--ide-accent)', flexShrink: 0 }} />
 
       {/* Text block */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: '110px' }}>

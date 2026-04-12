@@ -205,8 +205,8 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
                       style={{
                         width: '100%', textAlign: 'left', padding: '9px 14px',
                         border: 'none', cursor: 'pointer',
-                        backgroundColor: isActive ? 'rgba(0,151,157,0.15)' : 'transparent',
-                        borderLeft: `3px solid ${isActive ? 'var(--ide-teal)' : 'transparent'}`,
+                        backgroundColor: isActive ? 'rgba(255, 158, 0, 0.15)' : 'transparent',
+                        borderLeft: `3px solid ${isActive ? 'var(--ide-accent)' : 'transparent'}`,
                         display: 'flex', alignItems: 'center', gap: '10px',
                         transition: 'background 120ms ease',
                         opacity: isInstalled ? 1 : 0.45,
@@ -278,7 +278,7 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
                       style={{
                         width: '100%', textAlign: 'left', padding: '10px 14px',
                         border: 'none', cursor: 'pointer',
-                        backgroundColor: isActive ? 'rgba(0,151,157,0.15)' : 'transparent',
+                        backgroundColor: isActive ? 'rgba(255, 158, 0, 0.15)' : 'transparent',
                         borderBottom: '1px solid #1a1d22',
                         display: 'flex', alignItems: 'center', gap: '10px',
                         transition: 'background 120ms ease',
