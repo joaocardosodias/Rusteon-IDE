@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LibraryManager } from "./LibraryManager";
 import { BoardManager } from "./BoardManager";
 import { Editor } from "./Editor";
@@ -79,6 +80,18 @@ export function IDELayout() {
   const [sideWidth, setSideWidth] = useState(350);
   const [isSideDragging, setIsSideDragging] = useState(false);
   const [memoryModalOpen, setMemoryModalOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+
+  // Close menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.ide-menu-container')) {
+        setOpenMenu(null);
+      }
+    };
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, []);
 
   // Serial Monitor UI state
   const [autoScrollSerial, setAutoScrollSerial] = useState(true);
@@ -691,6 +704,42 @@ export function IDELayout() {
     };
   }, [isSideDragging, onSideMouseMove, onSideMouseUp]);
 
+  const MENU_STRUCTURE: Record<string, any[]> = {
+    "File": [
+      { label: "New Project...", action: () => { setWizardOpen(true); setOpenMenu(null); }, icon: <NoteAddIcon fontSize="small"/> },
+      { label: "Open Project...", action: () => { handleOpenFolder(); setOpenMenu(null); }, icon: <FolderOpenIcon fontSize="small"/> },
+      { label: "Save", action: () => { handleSaveFile(); setOpenMenu(null); }, icon: <SaveIcon fontSize="small"/>, shortcut: "Ctrl+S" },
+      { divider: true },
+      { label: "Exit", action: () => getCurrentWindow().close() }
+    ],
+    "Edit": [
+      { label: "Undo", action: () => { document.execCommand('undo'); setOpenMenu(null); }, shortcut: "Ctrl+Z" },
+      { label: "Redo", action: () => { document.execCommand('redo'); setOpenMenu(null); }, shortcut: "Ctrl+Y" },
+      { divider: true },
+      { label: "Cut", action: () => { document.execCommand('cut'); setOpenMenu(null); }, shortcut: "Ctrl+X" },
+      { label: "Copy", action: () => { document.execCommand('copy'); setOpenMenu(null); }, shortcut: "Ctrl+C" },
+      { label: "Paste", action: () => { document.execCommand('paste'); setOpenMenu(null); }, shortcut: "Ctrl+V" },
+    ],
+    "Sketch": [
+      { label: "Verify / Compile", action: () => { handleBuild(); setOpenMenu(null); }, icon: <CheckIcon fontSize="small"/>, shortcut: "Ctrl+R" },
+      { label: "Upload", action: () => { handleFlash(); setOpenMenu(null); }, icon: <FileUploadIcon fontSize="small"/>, shortcut: "Ctrl+U" },
+      { divider: true },
+      { label: "Cancel Process", action: () => { handleCancelProcess(); setOpenMenu(null); }, icon: <StopIcon fontSize="small"/> },
+      { divider: true },
+      { label: "Start Debugging", action: () => { handleDebug(); setOpenMenu(null); }, icon: <BugReportIcon fontSize="small"/>, shortcut: "F5" },
+    ],
+    "Tools": [
+      { label: "Board Manager...", action: () => { setBoardPortDialogOpen(true); setOpenMenu(null); }, icon: <DeveloperBoardIcon fontSize="small"/> },
+      { label: "Library Manager...", action: () => { setActiveSidebar(2); setOpenMenu(null); }, icon: <ExtensionIcon fontSize="small"/> },
+      { divider: true },
+      { label: "Serial Monitor", action: () => { handleSerial(); setOpenMenu(null); }, icon: <UsbIcon fontSize="small"/> },
+      { label: "Live Memory Dashboard", action: () => { setMemoryModalOpen(true); setOpenMenu(null); }, icon: <MemoryIcon fontSize="small"/> },
+    ],
+    "Help": [
+      { label: "About Rusteon", action: () => { showAlert("About Rusteon", "Rusteon IDE v0.1\n\nA Modern Embedded Rust Development Environment."); setOpenMenu(null); } }
+    ]
+  };
+
   const sidebarLabel = ["Explorer", "Boards", "Libraries", "Examples", "Search", "Settings"];
   
   const selectedBoardDef = BOARDS.find((b) => b.id === selectedBoard);
@@ -699,9 +748,34 @@ export function IDELayout() {
     <div className="ide-root">
 
       {/* ── MENU BAR ──────────────────────────────────────────────────── */}
-      <div className="ide-menubar">
+      <div className="ide-menubar ide-menu-container">
         {["File", "Edit", "Sketch", "Tools", "Help"].map((item) => (
-          <span key={item} className="ide-menu-item">{item}</span>
+          <div key={item} style={{ position: 'relative' }}>
+            <span 
+              className={`ide-menu-item ${openMenu === item ? 'ide-menu-item--active' : ''}`}
+              onClick={() => setOpenMenu(openMenu === item ? null : item)}
+              onMouseEnter={() => {
+                if (openMenu && openMenu !== item) setOpenMenu(item);
+              }}
+            >
+              {item}
+            </span>
+            {openMenu === item && (
+              <div className="ide-menu-dropdown">
+                {MENU_STRUCTURE[item].map((menuItem, idx) => 
+                  menuItem.divider ? (
+                    <div key={idx} className="ide-menu-dropdown-divider" />
+                  ) : (
+                    <button key={idx} className="ide-menu-dropdown-item" onClick={menuItem.action}>
+                      <span className="ide-menu-dropdown-icon">{menuItem.icon}</span>
+                      {menuItem.label}
+                      {menuItem.shortcut && <span className="ide-menu-dropdown-shortcut">{menuItem.shortcut}</span>}
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+          </div>
         ))}
         <span className="ide-menu-spacer" />
         <span className="ide-menu-badge">Rusteon IDE v0.1</span>

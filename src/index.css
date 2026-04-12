@@ -2959,3 +2959,67 @@ select {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* ── Dropdown Menu ──────────────────────────────────────────────────────────*/
+.ide-menu-container {
+  /* wrapper class for click outside detection */
+}
+.ide-menu-item--active {
+  background: var(--ide-highlight);
+  color: #fff;
+}
+
+.ide-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: #1e1e24;
+  border: 1px solid var(--ide-border-light);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  padding: 4px 0;
+  min-width: 220px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.ide-menu-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  color: var(--ide-text);
+  font-size: 12.5px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  outline: none;
+  transition: background var(--transition-fast);
+}
+
+.ide-menu-dropdown-item:hover {
+  background: var(--ide-highlight);
+  color: #fff;
+}
+
+.ide-menu-dropdown-icon {
+  color: var(--ide-text-muted);
+  display: flex;
+  align-items: center;
+  width: 18px;
+  justify-content: center;
+}
+
+.ide-menu-dropdown-shortcut {
+  margin-left: auto;
+  color: var(--ide-text-faint);
+  font-size: 11px;
+}
+
+.ide-menu-dropdown-divider {
+  height: 1px;
+  background: var(--ide-border-light);
+  margin: 4px 0;
+}
