@@ -2104,6 +2104,27 @@ select {
   font-family: 'JetBrains Mono', monospace;
 }
 
+.pw-esp-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.pw-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ide-text);
+  cursor: pointer;
+}
+
+.pw-check input {
+  margin: 0;
+  cursor: pointer;
+}
+
 .pw-error {
   font-size: 11px;
   color: #e06c75;

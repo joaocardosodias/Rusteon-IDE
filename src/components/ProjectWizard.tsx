@@ -7,9 +7,68 @@ import FolderOpenOutlinedIcon from '@mui/icons-material/FolderOpenOutlined';
 import CloseOutlinedIcon from '@mui/icons-material/CloseOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined';
-import { BOARDS } from "../data/boards";
+import { BOARDS, type BoardDefinition } from "../data/boards";
 
 type Step = "form" | "toolchain-warning" | "installing" | "creating" | "success";
+
+/** Options forwarded to `esp-generate --headless` (camelCase matches Rust serde). */
+interface EspGenerateOptions {
+  embassy: boolean;
+  alloc: boolean;
+  wifi: boolean;
+  ble: boolean;
+  espBacktrace: boolean;
+  log: boolean;
+}
+
+function isEspressifBoard(board: BoardDefinition | null | undefined): boolean {
+  return board?.vendor === "Espressif";
+}
+
+const DEFAULT_ESP_OPTS: EspGenerateOptions = {
+  embassy: false,
+  alloc: false,
+  wifi: false,
+  ble: false,
+  espBacktrace: true,
+  log: false,
+};
+
+type CargoTemplateKind = "embassy" | "stm32Hal" | "rp2040Official";
+
+interface CargoGenerateOptions {
+  templateKind: CargoTemplateKind;
+  chip: string;
+  stm32HalVersion: "last-release" | "git";
+  rtic: boolean;
+  defmt: boolean;
+  svd: boolean;
+  flashMethod: "probe-rs" | "picotool" | "custom" | "none";
+}
+
+function defaultCargoOpts(board: BoardDefinition): CargoGenerateOptions {
+  const chip = board.defaultCargoChip ?? "rp2040";
+  if (board.id === "stm32f4") {
+    return {
+      templateKind: "stm32Hal",
+      chip,
+      stm32HalVersion: "last-release",
+      rtic: false,
+      defmt: false,
+      svd: false,
+      flashMethod: "probe-rs",
+    };
+  }
+  return {
+    templateKind: "rp2040Official",
+    chip,
+    stm32HalVersion: "last-release",
+    rtic: false,
+    defmt: false,
+    svd: false,
+    flashMethod: "probe-rs",
+  };
+}
 
 interface BoardInstallState {
   installed_targets: string[];
@@ -22,6 +81,16 @@ export function ProjectWizard() {
   const [projectName, setProjectName] = useState("");
   const [parentDir, setParentDir] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<string>(selectedBoard || "standard");
+  const [espGenerateOpts, setEspGenerateOpts] = useState<EspGenerateOptions>({ ...DEFAULT_ESP_OPTS });
+  const [cargoGenerateOpts, setCargoGenerateOpts] = useState<CargoGenerateOptions>({
+    templateKind: "rp2040Official",
+    chip: "rp2040",
+    stm32HalVersion: "last-release",
+    rtic: false,
+    defmt: false,
+    svd: false,
+    flashMethod: "probe-rs",
+  });
   const [step, setStep] = useState<Step>("form");
   const [errorMsg, setErrorMsg] = useState("");
   const [installLog, setInstallLog] = useState<string[]>([]);
@@ -44,8 +113,17 @@ export function ProjectWizard() {
       setInstallDone(false);
       // Re-sync template to current board on re-open
       setSelectedTemplate(selectedBoard || "standard");
+      setEspGenerateOpts({ ...DEFAULT_ESP_OPTS });
+      const b = selectedBoard ? BOARDS.find(x => x.id === selectedBoard) : null;
+      if (b && !isEspressifBoard(b)) setCargoGenerateOpts(defaultCargoOpts(b));
     }
   }, [isWizardOpen, selectedBoard]);
+
+  useEffect(() => {
+    if (!isWizardOpen) return;
+    const b = BOARDS.find(x => x.id === selectedTemplate);
+    if (b && !isEspressifBoard(b)) setCargoGenerateOpts(defaultCargoOpts(b));
+  }, [isWizardOpen, selectedTemplate]);
 
   // Auto-scroll log
   useEffect(() => {
@@ -89,7 +167,32 @@ export function ProjectWizard() {
     setStep("creating");
     try {
       addLog(`Creating project '${projectName}' (${selectedTemplate})...`);
-      const path = await invoke<string>("create_new_project", { name: projectName, parentDir, template: selectedTemplate });
+      const espOptions = isEspressifBoard(activeBoardDef) ? espGenerateOpts : null;
+      const cargoGenerateOptions =
+        activeBoardDef && !isEspressifBoard(activeBoardDef)
+          ? {
+              templateKind: cargoGenerateOpts.templateKind,
+              chip: cargoGenerateOpts.chip.trim() || null,
+              stm32HalVersion:
+                cargoGenerateOpts.templateKind === "stm32Hal"
+                  ? cargoGenerateOpts.stm32HalVersion
+                  : null,
+              rtic: cargoGenerateOpts.rtic,
+              defmt: cargoGenerateOpts.defmt,
+              svd: cargoGenerateOpts.svd,
+              flashMethod:
+                cargoGenerateOpts.templateKind === "rp2040Official"
+                  ? cargoGenerateOpts.flashMethod
+                  : null,
+            }
+          : null;
+      const path = await invoke<string>("create_new_project", {
+        name: projectName,
+        parentDir,
+        template: selectedTemplate,
+        espOptions,
+        cargoGenerateOptions,
+      });
       addLog(`✓ Project '${projectName}' created at ${path}`);
       setActiveProject(path, projectName);
       // Persist and auto-open main.rs
@@ -195,6 +298,157 @@ export function ProjectWizard() {
               )}
             </div>
 
+            {activeBoardDef && !isEspressifBoard(activeBoardDef) && (
+              <div className="pw-field">
+                <label className="pw-label">cargo-generate template</label>
+                <select
+                  className="bm-version-select"
+                  value={cargoGenerateOpts.templateKind}
+                  onChange={e => {
+                    const k = e.target.value as CargoTemplateKind;
+                    setCargoGenerateOpts(o => {
+                      const next = { ...o, templateKind: k };
+                      if (k === "embassy" && activeBoardDef.defaultCargoChip) {
+                        next.chip = activeBoardDef.defaultCargoChip;
+                      }
+                      if (k === "stm32Hal" && activeBoardDef.id === "stm32f4") {
+                        next.chip = activeBoardDef.defaultCargoChip ?? "stm32f407vg";
+                      }
+                      if (k === "rp2040Official" && activeBoardDef.id === "rp2040") {
+                        next.chip = activeBoardDef.defaultCargoChip ?? "rp2040";
+                      }
+                      return next;
+                    });
+                  }}
+                  style={{ width: "100%", height: "32px", fontSize: "12px", padding: "0 8px", borderRadius: "5px" }}
+                >
+                  {activeBoardDef.id === "rp2040" ? (
+                    <>
+                      <option value="rp2040Official">Official rp-rs / rp2040-project-template</option>
+                      <option value="embassy">Embassy (lulf/embassy-template)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="stm32Hal">STM32 HAL — burrbull/stm32-template</option>
+                      <option value="embassy">Embassy — lulf/embassy-template</option>
+                    </>
+                  )}
+                </select>
+
+                {(cargoGenerateOpts.templateKind === "embassy" || cargoGenerateOpts.templateKind === "stm32Hal") && (
+                  <div style={{ marginTop: "10px" }}>
+                    <label className="pw-label" style={{ marginBottom: "4px" }}>MCU / chip (—define chip=…)</label>
+                    <input
+                      className="bm-search"
+                      type="text"
+                      value={cargoGenerateOpts.chip}
+                      onChange={e => setCargoGenerateOpts(o => ({ ...o, chip: e.target.value }))}
+                      placeholder={activeBoardDef.defaultCargoChip ?? "e.g. stm32f407vg, rp2350a"}
+                      style={{ width: "100%", borderRadius: "5px" }}
+                    />
+                  </div>
+                )}
+
+                {cargoGenerateOpts.templateKind === "stm32Hal" && (
+                  <>
+                    <div style={{ marginTop: "10px" }}>
+                      <label className="pw-label" style={{ marginBottom: "4px" }}>HAL source</label>
+                      <select
+                        className="bm-version-select"
+                        value={cargoGenerateOpts.stm32HalVersion}
+                        onChange={e =>
+                          setCargoGenerateOpts(o => ({
+                            ...o,
+                            stm32HalVersion: e.target.value as "last-release" | "git",
+                          }))
+                        }
+                        style={{ width: "100%", height: "32px", fontSize: "12px", padding: "0 8px", borderRadius: "5px" }}
+                      >
+                        <option value="last-release">last-release (crates.io)</option>
+                        <option value="git">git (stm32-rs nightlies)</option>
+                      </select>
+                    </div>
+                    <div className="pw-esp-opts" style={{ marginTop: "8px" }}>
+                      {([
+                        ["rtic", "RTIC application", cargoGenerateOpts.rtic],
+                        ["defmt", "defmt logging", cargoGenerateOpts.defmt],
+                        ["svd", "SVD + VS Code task", cargoGenerateOpts.svd],
+                      ] as const).map(([key, label, checked]) => (
+                        <label key={key} className="pw-check">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={e => setCargoGenerateOpts(o => ({ ...o, [key]: e.target.checked }))}
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {cargoGenerateOpts.templateKind === "rp2040Official" && (
+                  <div style={{ marginTop: "10px" }}>
+                    <label className="pw-label" style={{ marginBottom: "4px" }}>Flash method</label>
+                    <select
+                      className="bm-version-select"
+                      value={cargoGenerateOpts.flashMethod}
+                      onChange={e =>
+                        setCargoGenerateOpts(o => ({
+                          ...o,
+                          flashMethod: e.target.value as CargoGenerateOptions["flashMethod"],
+                        }))
+                      }
+                      style={{ width: "100%", height: "32px", fontSize: "12px", padding: "0 8px", borderRadius: "5px" }}
+                    >
+                      <option value="probe-rs">probe-rs</option>
+                      <option value="picotool">picotool</option>
+                      <option value="none">none</option>
+                      <option value="custom">custom</option>
+                    </select>
+                  </div>
+                )}
+
+                <span className="pw-hint" style={{ marginTop: "8px", display: "block" }}>
+                  Runs <code style={{ fontSize: 10 }}>cargo generate --git … --allow-commands</code>.
+                  Install: <code style={{ fontSize: 10 }}>cargo install cargo-generate --locked</code>.
+                  Templates may run hooks (network, git).
+                </span>
+              </div>
+            )}
+
+            {activeBoardDef && isEspressifBoard(activeBoardDef) && (
+              <div className="pw-field">
+                <label className="pw-label">esp-generate options</label>
+                <div className="pw-esp-opts">
+                  {([
+                    ["embassy", "Embassy (async)", espGenerateOpts.embassy],
+                    ["alloc", "Heap (alloc)", espGenerateOpts.alloc],
+                    ["wifi", "Wi‑Fi", espGenerateOpts.wifi],
+                    ["ble", "BLE (bleps)", espGenerateOpts.ble],
+                    ["espBacktrace", "esp-backtrace", espGenerateOpts.espBacktrace],
+                    ["log", "log crate", espGenerateOpts.log],
+                  ] as const).map(([key, label, checked]) => (
+                    <label key={key} className="pw-check">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={e => setEspGenerateOpts(o => ({ ...o, [key]: e.target.checked }))}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+                <span className="pw-hint">
+                  ESP projects are generated with <code style={{ fontSize: 10 }}>esp-generate --headless</code>
+                  (install: <code style={{ fontSize: 10 }}>cargo install esp-generate --locked</code>).
+                  <br />
+                  Embassy, Wi‑Fi, and BLE require <code style={{ fontSize: 10 }}>unstable-hal</code>; Wi‑Fi and BLE also
+                  pull in <code style={{ fontSize: 10 }}>alloc</code> automatically.
+                </span>
+              </div>
+            )}
+
             {errorMsg && <div className="pw-error">{errorMsg}</div>}
           </div>
 
@@ -294,7 +548,13 @@ export function ProjectWizard() {
           </div>
           <div className="pw-creating">
             <div className="pw-spinner" />
-            Running <code style={{ fontSize: 11 }}>cargo new {projectName}</code>
+            {isEspressifBoard(activeBoardDef) ? (
+              <>Running <code style={{ fontSize: 11 }}>esp-generate</code> for {projectName}</>
+            ) : activeBoardDef ? (
+              <>Running <code style={{ fontSize: 11 }}>cargo generate</code> for {projectName}</>
+            ) : (
+              <>Running <code style={{ fontSize: 11 }}>cargo new {projectName}</code></>
+            )}
           </div>
         </div>
       </>

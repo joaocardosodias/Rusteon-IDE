@@ -15,6 +15,8 @@ export interface BoardDefinition {
   flashTool: string;
   description: string;
   infoUrl: string;
+  /** Default `chip=` for `cargo generate` (embassy-template / stm32-template). */
+  defaultCargoChip?: string;
 }
 
 export const VENDORS = ['Espressif', 'Raspberry Pi', 'STMicroelectronics'] as const;
@@ -106,6 +108,7 @@ export const BOARDS: BoardDefinition[] = [
     flashTool: 'elf2uf2-rs',
     description: 'Dual-core ARM Cortex-M0+, 264KB SRAM, Programmable I/O (PIO).',
     infoUrl: 'https://www.raspberrypi.com/documentation/microcontrollers/rp2040.html',
+    defaultCargoChip: 'rp2040',
   },
   {
     id: 'stm32f4',
@@ -120,6 +123,7 @@ export const BOARDS: BoardDefinition[] = [
     flashTool: 'probe-rs',
     description: 'ARM Cortex-M4 168MHz, FPU, 1MB Flash, 192KB SRAM.',
     infoUrl: 'https://www.st.com/en/microcontrollers-microprocessors/stm32f4-series.html',
+    defaultCargoChip: 'stm32f407vg',
   },
 ];
 
