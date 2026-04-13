@@ -427,6 +427,13 @@ export function Editor() {
       if (lspRef.current && file && file.endsWith('.rs')) {
         lspRef.current.didChange(val);
       }
+
+      const { autoSaveEnabled } = useIDEStore.getState();
+      if (autoSaveEnabled && file) {
+        invoke("save_file", { path: file, content: val }).catch((e) => {
+          addLog(`[Error] Auto-save failed: ${e}`);
+        });
+      }
     }, 300);
   };
 

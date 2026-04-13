@@ -63,6 +63,30 @@ function logColor(type: LogLine["type"]) {
   return "var(--ide-text)";
 }
 
+function getEspIdfTargetForBoard(boardId: string | null | undefined): string | null {
+  switch (boardId) {
+    case "esp32":
+      return "xtensa-esp32-espidf";
+    case "esp32s2":
+      return "xtensa-esp32s2-espidf";
+    case "esp32s3":
+      return "xtensa-esp32s3-espidf";
+    case "esp32c3":
+      return "riscv32imc-esp-espidf";
+    case "esp32c6":
+      return "riscv32imac-esp-espidf";
+    default:
+      return null;
+  }
+}
+
+function resolveExpectedTarget(currentTarget: string, board: any): string {
+  if (!board) return currentTarget;
+  const espIdfTarget = getEspIdfTargetForBoard(board.id);
+  if (espIdfTarget && currentTarget === espIdfTarget) return espIdfTarget;
+  return board.target;
+}
+
 // ─── Main IDE Layout ─────────────────────────────────────────────────────────
 export function IDELayout() {
 
@@ -128,6 +152,8 @@ export function IDELayout() {
   const setSerialBaudRate = useIDEStore((state) => state.setSerialBaudRate);
   const serialConnected = useIDEStore((state) => state.serialConnected);
   const setSerialConnected = useIDEStore((state) => state.setSerialConnected);
+  const autoSaveEnabled = useIDEStore((state) => state.autoSaveEnabled);
+  const setAutoSaveEnabled = useIDEStore((state) => state.setAutoSaveEnabled);
 
   // LSP State
   const lspStatus = useIDEStore((state) => state.lspStatus);
@@ -346,7 +372,7 @@ export function IDELayout() {
   };
 
   const autoSaveActiveFile = async (): Promise<boolean> => {
-    if (!activeFile || !content) return true; // nothing to save
+    if (!activeFile) return true; // nothing to save
     try {
       await invoke("save_file", { path: activeFile, content });
       setOutputLines(prev => [...prev, { text: `  💾 Auto-saved ${activeFile.split(/[/\\]/).pop()}`, type: "dim" }]);
@@ -406,8 +432,10 @@ export function IDELayout() {
       // Target Installation Check
       if (selectedBoardDef) {
         const state = await invoke<{ installed_targets: string[] }>("check_installed_targets");
-        if (!state.installed_targets.includes(selectedBoardDef.target)) {
-          setOutputLines(prev => [...prev, { text: `[Error] ${selectedBoardDef.name} is NOT INSTALLED! Please open the Board Manager and install it before building.`, type: "err" }]);
+        const currentTarget = await invoke<string>("get_project_target", { projectPath: activeProjectPath });
+        const expectedTarget = resolveExpectedTarget(currentTarget, selectedBoardDef);
+        if (!state.installed_targets.includes(expectedTarget)) {
+          setOutputLines(prev => [...prev, { text: `[Error] Target ${expectedTarget} for ${selectedBoardDef.name} is NOT INSTALLED! Please open the Board Manager and install it before building.`, type: "err" }]);
           setIsBuilding(false);
           return;
         }
@@ -465,14 +493,15 @@ export function IDELayout() {
       }
 
       let target = await invoke<string>("get_project_target", { projectPath: activeProjectPath });
-      
-      if (selectedBoardDef && target !== "unknown" && target !== selectedBoardDef.target) {
+
+      const expectedTarget = resolveExpectedTarget(target, selectedBoardDef);
+      if (selectedBoardDef && target !== "unknown" && target !== expectedTarget) {
         const proceed = window.confirm(`Inconsistência de Placa detectada!\n\nVocê selecionou '${selectedBoardDef.name}', mas o projeto está configurado para '${target}'.\n\nDeseja alterar as configurações do projeto para iniciar a depuração corretamente na placa selecionada?`);
         if (proceed) {
-          setOutputLines(prev => [...prev, { text: `> Sincronizando alvo para: ${selectedBoardDef.target}...`, type: "dim" }]);
+          setOutputLines(prev => [...prev, { text: `> Sincronizando alvo para: ${expectedTarget}...`, type: "dim" }]);
           try {
-            await invoke("update_cargo_target", { projectPath: activeProjectPath, newTarget: selectedBoardDef.target });
-            target = selectedBoardDef.target;
+            await invoke("update_cargo_target", { projectPath: activeProjectPath, newTarget: expectedTarget });
+            target = expectedTarget;
             setOutputLines(prev => [...prev, { text: `✓ Configurações do projeto sincronizadas.`, type: "ok" }]);
           } catch (err: any) {
             setOutputLines(prev => [...prev, { text: `[Warning] Failed to update config.toml: ${err}`, type: "warn" }]);
@@ -541,8 +570,10 @@ export function IDELayout() {
       // 1.1 Target Installation Check
       if (selectedBoardDef) {
         const state = await invoke<{ installed_targets: string[] }>("check_installed_targets");
-        if (!state.installed_targets.includes(selectedBoardDef.target)) {
-          setOutputLines(prev => [...prev, { text: `[Error] ${selectedBoardDef.name} is NOT INSTALLED! Please open the Board Manager and install it before uploading.`, type: "err" }]);
+        const currentTarget = await invoke<string>("get_project_target", { projectPath: activeProjectPath });
+        const expectedTarget = resolveExpectedTarget(currentTarget, selectedBoardDef);
+        if (!state.installed_targets.includes(expectedTarget)) {
+          setOutputLines(prev => [...prev, { text: `[Error] Target ${expectedTarget} for ${selectedBoardDef.name} is NOT INSTALLED! Please open the Board Manager and install it before uploading.`, type: "err" }]);
           setIsFlashing(false);
           return;
         }
@@ -551,13 +582,14 @@ export function IDELayout() {
       // 1.5. Target Sync Check
       if (selectedBoardDef) {
         const currentTarget = await invoke<string>("get_project_target", { projectPath: activeProjectPath });
-        if (currentTarget !== "unknown" && currentTarget !== selectedBoardDef.target) {
+        const expectedTarget = resolveExpectedTarget(currentTarget, selectedBoardDef);
+        if (currentTarget !== "unknown" && currentTarget !== expectedTarget) {
           const proceed = window.confirm(`Inconsistência de Placa detectada!\n\nVocê selecionou '${selectedBoardDef.name}' na Interface, mas o projeto está configurado internamente para compilar para '${currentTarget}'.\n\nDeseja alterar as configurações do projeto (.cargo/config.toml) para garantir que a compilação funcione na placa que você selecionou?`);
           
           if (proceed) {
-            setOutputLines(prev => [...prev, { text: `> Sincronizando alvo para: ${selectedBoardDef.target} (${selectedBoardDef.chip})...`, type: "dim" }]);
+            setOutputLines(prev => [...prev, { text: `> Sincronizando alvo para: ${expectedTarget} (${selectedBoardDef.chip})...`, type: "dim" }]);
             try {
-              await invoke("update_cargo_target", { projectPath: activeProjectPath, newTarget: selectedBoardDef.target });
+              await invoke("update_cargo_target", { projectPath: activeProjectPath, newTarget: expectedTarget });
               setOutputLines(prev => [...prev, { text: `✓ Configurações do projeto sincronizadas.`, type: "ok" }]);
             } catch (err: any) {
               setOutputLines(prev => [...prev, { text: `[Warning] Failed to update config.toml: ${err}`, type: "warn" }]);
@@ -623,7 +655,7 @@ export function IDELayout() {
   }, [handleDebug]);
 
   const handleSaveFile = async () => {
-    if (activeFile && content) {
+    if (activeFile) {
       try {
         await invoke("save_file", { path: activeFile, content });
         addLog(`✓ Saved ${activeFile.split(/[/\\]/).pop()}`);
@@ -723,6 +755,7 @@ export function IDELayout() {
       { label: "New Project...", action: () => { setWizardOpen(true); setOpenMenu(null); }, icon: <NoteAddIcon fontSize="small"/> },
       { label: "Open Project...", action: () => { handleOpenFolder(); setOpenMenu(null); }, icon: <FolderOpenIcon fontSize="small"/> },
       { label: "Save", action: () => { handleSaveFile(); setOpenMenu(null); }, icon: <SaveIcon fontSize="small"/>, shortcut: "Ctrl+S" },
+      { label: "Auto Save", action: () => setAutoSaveEnabled(!autoSaveEnabled), isCheckbox: true, checked: autoSaveEnabled },
       { divider: true },
       { label: "Exit", action: () => getCurrentWindow().close() }
     ],
@@ -781,7 +814,18 @@ export function IDELayout() {
                     <div key={idx} className="ide-menu-dropdown-divider" />
                   ) : (
                     <button key={idx} className="ide-menu-dropdown-item" onClick={menuItem.action}>
-                      <span className="ide-menu-dropdown-icon">{menuItem.icon}</span>
+                      <span className="ide-menu-dropdown-icon">
+                        {menuItem.isCheckbox ? (
+                          <span
+                            className={`ide-menu-checkbox ${menuItem.checked ? "ide-menu-checkbox--checked" : ""}`}
+                            aria-hidden="true"
+                          >
+                            {menuItem.checked && <CheckIcon sx={{ fontSize: 13 }} />}
+                          </span>
+                        ) : (
+                          menuItem.icon
+                        )}
+                      </span>
                       {menuItem.label}
                       {menuItem.shortcut && <span className="ide-menu-dropdown-shortcut">{menuItem.shortcut}</span>}
                     </button>

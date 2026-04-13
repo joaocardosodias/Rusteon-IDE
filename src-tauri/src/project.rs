@@ -157,6 +157,7 @@ pub struct CargoGenerateOptions {
 const GIT_EMBASSY_TEMPLATE: &str = "https://github.com/lulf/embassy-template";
 const GIT_STM32_HAL_TEMPLATE: &str = "https://github.com/burrbull/stm32-template";
 const GIT_RP2040_TEMPLATE: &str = "https://github.com/rp-rs/rp2040-project-template";
+const GIT_ESP_IDF_TEMPLATE: &str = "https://github.com/esp-rs/esp-idf-template";
 
 fn default_embassy_chip_for_board(board_id: &str) -> &'static str {
     match board_id {
@@ -170,13 +171,21 @@ fn run_cargo_generate(
     parent_path: &Path,
     project_name: &str,
     git_url: &str,
+    subfolder: Option<&str>,
     defines: &[(&str, String)],
 ) -> Result<(), String> {
     let mut cmd = Command::new("cargo");
     cmd.arg("generate")
         .arg("--git")
-        .arg(git_url)
-        .arg("--name")
+        .arg(git_url);
+
+    // Some templates (like esp-idf-template) live in a subfolder of the repository.
+    // Example: `cargo generate esp-rs/esp-idf-template cargo`
+    if let Some(sub) = subfolder {
+        cmd.arg(sub);
+    }
+
+    cmd.arg("--name")
         .arg(project_name)
         .arg("--destination")
         .arg(parent_path)
@@ -222,7 +231,7 @@ fn run_embedded_cargo_generate(
                 .clone()
                 .unwrap_or_else(|| default_embassy_chip_for_board(board_id).to_string());
             let defines = vec![("chip", chip)];
-            run_cargo_generate(parent_path, project_name, GIT_EMBASSY_TEMPLATE, &defines)?;
+            run_cargo_generate(parent_path, project_name, GIT_EMBASSY_TEMPLATE, None, &defines)?;
         }
         "stm32Hal" => {
             let chip = opts
@@ -250,6 +259,7 @@ fn run_embedded_cargo_generate(
                 parent_path,
                 project_name,
                 GIT_STM32_HAL_TEMPLATE,
+                None,
                 &defines,
             )?;
         }
@@ -266,7 +276,7 @@ fn run_embedded_cargo_generate(
                 ));
             }
             let defines = vec![("flash_method", flash)];
-            run_cargo_generate(parent_path, project_name, GIT_RP2040_TEMPLATE, &defines)?;
+            run_cargo_generate(parent_path, project_name, GIT_RP2040_TEMPLATE, None, &defines)?;
         }
         other => {
             return Err(format!(
@@ -278,11 +288,47 @@ fn run_embedded_cargo_generate(
     Ok(())
 }
 
+fn run_esp_idf_template(
+    parent_path: &Path,
+    project_name: &str,
+    mcu: &str,
+) -> Result<(), String> {
+    // Use the `cargo/` subtemplate and bypass interactive prompts.
+    // Placeholders: mcu (string), advanced (bool)
+    let defines = vec![
+        ("mcu", mcu.to_string()),
+        ("advanced", "false".to_string()),
+    ];
+    run_cargo_generate(parent_path, project_name, GIT_ESP_IDF_TEMPLATE, Some("cargo"), &defines)
+}
+
 fn is_espressif_template(template: &str) -> bool {
     matches!(
         template,
         "esp32" | "esp32c2" | "esp32c3" | "esp32c6" | "esp32h2" | "esp32s2" | "esp32s3"
     )
+}
+
+fn esp_idf_target_for_mcu(mcu: &str) -> Option<&'static str> {
+    match mcu {
+        "esp32" => Some("xtensa-esp32-espidf"),
+        "esp32s2" => Some("xtensa-esp32s2-espidf"),
+        "esp32s3" => Some("xtensa-esp32s3-espidf"),
+        "esp32c2" | "esp32c3" => Some("riscv32imc-esp-espidf"),
+        "esp32c5" | "esp32c6" | "esp32c61" | "esp32h2" => Some("riscv32imac-esp-espidf"),
+        "esp32p4" => Some("riscv32imafc-esp-espidf"),
+        _ => None,
+    }
+}
+
+fn infer_espidf_target_from_config(project_path: &Path) -> Option<String> {
+    let config_path = project_path.join(".cargo").join("config.toml");
+    let content = fs::read_to_string(config_path).ok()?;
+    let doc = content.parse::<toml_edit::DocumentMut>().ok()?;
+
+    let env = doc.get("env")?.as_table()?;
+    let mcu = env.get("MCU")?.as_str()?;
+    esp_idf_target_for_mcu(mcu).map(ToString::to_string)
 }
 
 fn run_esp_generate(
@@ -370,6 +416,7 @@ pub fn create_new_project(
     name: String,
     parent_dir: String,
     template: String,
+    esp_framework: Option<String>,
     esp_options: Option<EspGenerateOptions>,
     cargo_generate_options: Option<CargoGenerateOptions>,
 ) -> Result<String, String> {
@@ -392,8 +439,13 @@ pub fn create_new_project(
     }
 
     if is_espressif_template(&template) {
-        let opts = esp_options.unwrap_or_default();
-        run_esp_generate(&parent_path, &name, &template, &opts)?;
+        let fw = esp_framework.unwrap_or_else(|| "esp-hal".to_string());
+        if fw == "esp-idf" {
+            run_esp_idf_template(&parent_path, &name, &template)?;
+        } else {
+            let opts = esp_options.unwrap_or_default();
+            run_esp_generate(&parent_path, &name, &template, &opts)?;
+        }
         return Ok(project_path.to_string_lossy().to_string());
     }
 
@@ -457,14 +509,16 @@ pub fn load_last_project(app: tauri::AppHandle) -> Option<LastProject> {
 
 #[tauri::command]
 pub fn detect_cargo_target(project_path: String) -> Result<Option<String>, String> {
-    // First try the .cargo/config.toml (standard embedded pattern)
+    // First read .cargo/config.toml target (if present), but do not return early.
+    // For ESP-IDF projects, we'll validate/override below.
+    let mut config_target: Option<String> = None;
     let config_path = Path::new(&project_path).join(".cargo").join("config.toml");
     if config_path.exists() {
         if let Ok(content) = fs::read_to_string(&config_path) {
             if let Ok(doc) = content.parse::<toml_edit::DocumentMut>() {
                 if let Some(build) = doc.get("build").and_then(|i| i.as_table()) {
                     if let Some(target) = build.get("target").and_then(|i| i.as_str()) {
-                        return Ok(Some(target.to_string()));
+                        config_target = Some(target.to_string());
                     }
                 }
             }
@@ -497,12 +551,29 @@ pub fn detect_cargo_target(project_path: String) -> Result<Option<String>, Strin
                             return Ok(Some("riscv32imac-unknown-none-elf".to_string()));
                         }
                     }
+
+                    // ESP-IDF projects (esp-idf-template and similar).
+                    if deps.contains_key("esp-idf-sys")
+                        || deps.contains_key("esp-idf-hal")
+                        || deps.contains_key("esp-idf-svc")
+                    {
+                        if let Some(t) = infer_espidf_target_from_config(Path::new(&project_path)) {
+                            return Ok(Some(t));
+                        }
+                        if let Some(t) = &config_target {
+                            if t.contains("espidf") {
+                                return Ok(Some(t.clone()));
+                            }
+                        }
+                        // Fallback when MCU metadata is unavailable.
+                        return Ok(Some("xtensa-esp32-espidf".to_string()));
+                    }
                 }
             }
         }
     }
 
-    Ok(None)
+    Ok(config_target)
 }
 
 #[tauri::command]

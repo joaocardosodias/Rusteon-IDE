@@ -33,6 +33,7 @@ export interface StandardDiagnostic {
 interface EditorState {
   activeFile: string | null;
   content: string;
+  autoSaveEnabled: boolean;
   openTabs: OpenTab[];
   logs: string[];
   lspStatus: LspStatus;
@@ -42,6 +43,7 @@ interface EditorState {
   standardErrors: StandardDiagnostic[];
   setActiveFile: (file: string | null) => void;
   setContent: (content: string) => void;
+  setAutoSaveEnabled: (enabled: boolean) => void;
   addOpenTab: (tab: OpenTab) => void;
   removeOpenTab: (path: string) => void;
   addLog: (log: string) => void;
@@ -69,6 +71,7 @@ interface ProjectState {
 export const useIDEStore = create<EditorState & BoardSelectorState & ProjectState>((set) => ({
   activeFile: null,
   content: '// Welcome to Rusteon IDE\n// Open a project to get started',
+  autoSaveEnabled: false,
   openTabs: [],
   logs: ['Rusteon IDE initialized...'],
   lspStatus: 'idle',
@@ -78,6 +81,7 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   standardErrors: [],
   setActiveFile: (file) => set({ activeFile: file }),
   setContent: (content) => set({ content }),
+  setAutoSaveEnabled: (enabled) => set({ autoSaveEnabled: enabled }),
   addOpenTab: (tab) => set((state) => {
     if (state.openTabs.some(t => t.path === tab.path)) return {};
     return { openTabs: [...state.openTabs, tab] };

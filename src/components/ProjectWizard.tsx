@@ -24,9 +24,28 @@ interface EspGenerateOptions {
   psram: boolean;
 }
 
+type EspFramework = "esp-hal" | "esp-idf";
+
 
 function isEspressifBoard(board: BoardDefinition | null | undefined): boolean {
   return board?.vendor === "Espressif";
+}
+
+function espIdfTargetForBoard(board: BoardDefinition): string {
+  switch (board.id) {
+    case "esp32":
+      return "xtensa-esp32-espidf";
+    case "esp32s2":
+      return "xtensa-esp32s2-espidf";
+    case "esp32s3":
+      return "xtensa-esp32s3-espidf";
+    case "esp32c3":
+      return "riscv32imc-esp-espidf";
+    case "esp32c6":
+      return "riscv32imac-esp-espidf";
+    default:
+      return board.target;
+  }
 }
 
 const DEFAULT_ESP_OPTS: EspGenerateOptions = {
@@ -90,6 +109,7 @@ export function ProjectWizard() {
   const [parentDir, setParentDir] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<string>(selectedBoard || "standard");
   const [espGenerateOpts, setEspGenerateOpts] = useState<EspGenerateOptions>({ ...DEFAULT_ESP_OPTS });
+  const [espFramework, setEspFramework] = useState<EspFramework>("esp-hal");
   const [cargoGenerateOpts, setCargoGenerateOpts] = useState<CargoGenerateOptions>({
     templateKind: "rp2040Official",
     chip: "rp2040",
@@ -122,6 +142,7 @@ export function ProjectWizard() {
       // Re-sync template to current board on re-open
       setSelectedTemplate(selectedBoard || "standard");
       setEspGenerateOpts({ ...DEFAULT_ESP_OPTS });
+      setEspFramework("esp-hal");
       const b = selectedBoard ? BOARDS.find(x => x.id === selectedBoard) : null;
       if (b && !isEspressifBoard(b)) setCargoGenerateOpts(defaultCargoOpts(b));
     }
@@ -163,10 +184,21 @@ export function ProjectWizard() {
     if (err) { setErrorMsg(err); return; }
     setErrorMsg("");
     if (!isEmbedded) { await doCreate(); return; }
+
     try {
       const state = await invoke<BoardInstallState>("check_installed_targets");
-      const ok = state.installed_targets.includes(activeBoardDef!.target) ||
-        (activeBoardDef!.installMethod === "espup" && state.espup_installed);
+      const expectedTarget =
+        isEspressifBoard(activeBoardDef) && espFramework === "esp-idf"
+          ? espIdfTargetForBoard(activeBoardDef!)
+          : activeBoardDef!.target;
+
+      const installMethod =
+        isEspressifBoard(activeBoardDef) && espFramework === "esp-idf"
+          ? "espup"
+          : activeBoardDef!.installMethod;
+
+      const ok = state.installed_targets.includes(expectedTarget) ||
+        (installMethod === "espup" && state.espup_installed);
       if (ok) await doCreate(); else setStep("toolchain-warning");
     } catch { setStep("toolchain-warning"); }
   };
@@ -198,6 +230,7 @@ export function ProjectWizard() {
         name: projectName,
         parentDir,
         template: selectedTemplate,
+        espFramework: isEspressifBoard(activeBoardDef) ? espFramework : null,
         espOptions,
         cargoGenerateOptions,
       });
@@ -229,7 +262,18 @@ export function ProjectWizard() {
       setInstallLog(prev => [...prev, ev.payload.line]);
     });
     try {
-      await invoke("install_board_target", { target: activeBoardDef.target, method: activeBoardDef.installMethod, espupTargets: activeBoardDef.espupTargets ?? null });
+      const espIdfInstall = isEspressifBoard(activeBoardDef) && espFramework === "esp-idf";
+      const installTarget = espIdfInstall ? espIdfTargetForBoard(activeBoardDef) : activeBoardDef.target;
+      const installMethod = espIdfInstall ? "espup" : activeBoardDef.installMethod;
+      const espupTargets = espIdfInstall
+        ? activeBoardDef.id
+        : activeBoardDef.espupTargets ?? null;
+
+      await invoke("install_board_target", {
+        target: installTarget,
+        method: installMethod,
+        espupTargets,
+      });
       setInstallLog(prev => [...prev, `✓ ${activeBoardDef.name} installed successfully!`]);
       setInstallDone(true);
       addLog(`Board ${activeBoardDef.name} installed.`);
@@ -429,7 +473,27 @@ export function ProjectWizard() {
 
             {activeBoardDef && isEspressifBoard(activeBoardDef) && (
               <div className="pw-field">
-                <label className="pw-label">esp-generate options</label>
+                <label className="pw-label">Espressif framework</label>
+                <select
+                  className="bm-version-select"
+                  value={espFramework}
+                  onChange={e => setEspFramework(e.target.value as EspFramework)}
+                  style={{ width: "100%", height: "32px", fontSize: "12px", padding: "0 8px", borderRadius: "5px" }}
+                >
+                  <option value="esp-hal">esp-hal (bare-metal) — esp-generate</option>
+                  <option value="esp-idf">ESP-IDF (std) — esp-idf-template</option>
+                </select>
+
+                {espFramework === "esp-idf" ? (
+                  <span className="pw-hint" style={{ marginTop: "8px", display: "block" }}>
+                    Generates using <code style={{ fontSize: 10 }}>cargo generate esp-rs/esp-idf-template cargo</code> with
+                    <code style={{ fontSize: 10 }}> -d mcu={activeBoardDef.id} -d advanced=false</code>.
+                    <br />
+                    Requires ESP-IDF prerequisites + <code style={{ fontSize: 10 }}>cargo-generate</code>, <code style={{ fontSize: 10 }}>ldproxy</code>, <code style={{ fontSize: 10 }}>espup</code>.
+                  </span>
+                ) : (
+                  <>
+                    <label className="pw-label" style={{ marginTop: "12px" }}>esp-generate options</label>
                 <div className="pw-esp-opts">
                   {([
                     ["embassy", "Embassy (async)", espGenerateOpts.embassy],
@@ -462,6 +526,8 @@ export function ProjectWizard() {
                   Embassy, Wi‑Fi, and BLE require <code style={{ fontSize: 10 }}>unstable-hal</code>; Wi‑Fi and BLE also
                   pull in <code style={{ fontSize: 10 }}>alloc</code> automatically.
                 </span>
+                  </>
+                )}
               </div>
             )}
 
@@ -500,7 +566,13 @@ export function ProjectWizard() {
                 Board support not installed
               </div>
               <div className="pw-warn-body">
-                The <strong>{activeBoardDef?.name}</strong> template requires the <strong>{activeBoardDef?.target}</strong> toolchain.
+                The <strong>{activeBoardDef?.name}</strong> template requires the <strong>{
+                  activeBoardDef
+                    ? (isEspressifBoard(activeBoardDef) && espFramework === "esp-idf"
+                        ? espIdfTargetForBoard(activeBoardDef)
+                        : activeBoardDef.target)
+                    : ""
+                }</strong> toolchain.
                 <br /><br />
                 Without it, <code>cargo build</code> will fail immediately.
               </div>
