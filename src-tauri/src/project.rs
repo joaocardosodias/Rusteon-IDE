@@ -101,7 +101,17 @@ pub struct EspGenerateOptions {
     /// `-o log`
     #[serde(default)]
     pub log: bool,
+    /// `-o defmt`
+    #[serde(default)]
+    pub defmt: bool,
+    /// `-o multicore`
+    #[serde(default)]
+    pub multicore: bool,
+    /// `-o psram`
+    #[serde(default)]
+    pub psram: bool,
 }
+
 
 fn default_esp_backtrace() -> bool {
     true
@@ -116,9 +126,13 @@ impl Default for EspGenerateOptions {
             ble: false,
             esp_backtrace: true,
             log: false,
+            defmt: false,
+            multicore: false,
+            psram: false,
         }
     }
 }
+
 
 /// Options for `cargo generate` (STM32 / RP2040 templates).
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -312,6 +326,16 @@ fn run_esp_generate(
     if opts.log {
         cmd.args(["-o", "log"]);
     }
+    if opts.defmt {
+        cmd.args(["-o", "defmt"]);
+    }
+    if opts.multicore {
+        cmd.args(["-o", "multicore"]);
+    }
+    if opts.psram {
+        cmd.args(["-o", "psram"]);
+    }
+
 
     cmd.arg(project_name);
 

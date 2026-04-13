@@ -310,10 +310,11 @@ export function BoardPortDialog({ open, onClose, onConfirm }: BoardPortDialogPro
               <input
                 id="show-all-ports"
                 type="checkbox"
+                className="custom-checkbox"
                 checked={showAll}
                 onChange={(e) => setShowAll(e.target.checked)}
-                style={{ cursor: 'pointer', accentColor: '#ff9e00' }}
               />
+
               <label htmlFor="show-all-ports" style={{ fontSize: '12px', color: '#888', cursor: 'pointer' }}>
                 Show all ports
               </label>

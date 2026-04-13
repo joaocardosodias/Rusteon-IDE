@@ -120,6 +120,52 @@ select {
   -webkit-appearance: none;
   cursor: pointer;
 }
+/* ── Custom Checkbox ──────────────────────────────────────────────────────── */
+.custom-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  border: 1px solid #3d424b;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  position: relative;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+  vertical-align: middle;
+}
+
+.custom-checkbox:hover {
+  border-color: var(--ide-accent);
+  background: rgba(255, 158, 0, 0.05);
+}
+
+.custom-checkbox:checked {
+  background: var(--ide-accent);
+  border-color: var(--ide-accent);
+  box-shadow: 0 0 8px rgba(255, 158, 0, 0.2);
+}
+
+.custom-checkbox:checked::after {
+  content: "";
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) translate(0.5px, -1px);
+}
+
+.custom-checkbox:focus-visible {
+  border-color: var(--ide-accent);
+  box-shadow: 0 0 0 2px var(--ide-accent-dim);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
 /*  IDE ROOT LAYOUT                                                            */
@@ -1782,11 +1828,26 @@ select {
 .bm-install-feature-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 10.5px;
+  gap: 8px;
+  font-size: 11px;
   font-family: 'JetBrains Mono', monospace;
   color: var(--ide-text);
+  padding: 4px 6px;
+  margin: 0 -4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  user-select: none;
 }
+
+.bm-install-feature-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.bm-install-feature-row span {
+  flex: 1;
+}
+
 
 .bm-install-panel-actions {
   display: flex;

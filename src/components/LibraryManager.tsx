@@ -291,11 +291,13 @@ export function LibraryManager() {
               <label key={feat} className="bm-install-feature-row">
                 <input
                   type="checkbox"
+                  className="custom-checkbox"
                   checked={!!installPanelChecked[feat]}
                   onChange={e =>
                     setInstallPanelChecked(prev => ({ ...prev, [feat]: e.target.checked }))
                   }
                 />
+
                 <span>{feat}</span>
               </label>
             ))}

@@ -19,7 +19,11 @@ interface EspGenerateOptions {
   ble: boolean;
   espBacktrace: boolean;
   log: boolean;
+  defmt: boolean;
+  multicore: boolean;
+  psram: boolean;
 }
+
 
 function isEspressifBoard(board: BoardDefinition | null | undefined): boolean {
   return board?.vendor === "Espressif";
@@ -32,7 +36,11 @@ const DEFAULT_ESP_OPTS: EspGenerateOptions = {
   ble: false,
   espBacktrace: true,
   log: false,
+  defmt: false,
+  multicore: false,
+  psram: false,
 };
+
 
 type CargoTemplateKind = "embassy" | "stm32Hal" | "rp2040Official";
 
@@ -377,9 +385,11 @@ export function ProjectWizard() {
                         <label key={key} className="pw-check">
                           <input
                             type="checkbox"
+                            className="custom-checkbox"
                             checked={checked}
                             onChange={e => setCargoGenerateOpts(o => ({ ...o, [key]: e.target.checked }))}
                           />
+
                           <span>{label}</span>
                         </label>
                       ))}
@@ -428,13 +438,19 @@ export function ProjectWizard() {
                     ["ble", "BLE (bleps)", espGenerateOpts.ble],
                     ["espBacktrace", "esp-backtrace", espGenerateOpts.espBacktrace],
                     ["log", "log crate", espGenerateOpts.log],
+                    ["defmt", "defmt logging", espGenerateOpts.defmt],
+                    ["multicore", "Multicore support", espGenerateOpts.multicore],
+                    ["psram", "PSRAM support", espGenerateOpts.psram],
                   ] as const).map(([key, label, checked]) => (
+
                     <label key={key} className="pw-check">
                       <input
                         type="checkbox"
+                        className="custom-checkbox"
                         checked={checked}
                         onChange={e => setEspGenerateOpts(o => ({ ...o, [key]: e.target.checked }))}
                       />
+
                       <span>{label}</span>
                     </label>
                   ))}
