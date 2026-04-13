@@ -54,6 +54,14 @@ export function LibraryManager() {
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [hasPreloaded, setHasPreloaded] = useState(false);
 
+  /** Crate name when the install + features panel is open (curated / search only). */
+  const [installPanelCrate, setInstallPanelCrate] = useState<string | null>(null);
+  const [installPanelVersion, setInstallPanelVersion] = useState<string | undefined>(undefined);
+  const [installPanelFeatures, setInstallPanelFeatures] = useState<string[]>([]);
+  const [installPanelLoading, setInstallPanelLoading] = useState(false);
+  const [installPanelError, setInstallPanelError] = useState<string | null>(null);
+  const [installPanelChecked, setInstallPanelChecked] = useState<Record<string, boolean>>({});
+
   // Fetch installed libs when project path changes
   useEffect(() => {
     if (activeProjectPath) {
@@ -128,32 +136,6 @@ export function LibraryManager() {
 
   const getVersion = (name: string) => installedLibs.find(l => l.name === name)?.version;
 
-  const installLib = async (name: string, version?: string) => {
-    const status = getStatus(name);
-    if (status === 'installing' || status === 'removing' || !activeProjectPath) return;
-
-    setLibStatus(prev => ({ ...prev, [name]: 'installing' }));
-    setLibErrors(prev => { const n = { ...prev }; delete n[name]; return n; });
-    addLog(`> cargo add ${name}${version ? `@${version}` : ""}`);
-
-    try {
-      await invoke("add_library_to_project", {
-        projectPath: activeProjectPath,
-        libName: name,
-        version: version ?? null,
-        features: null,
-      });
-      addLog(`✓ ${name} added to Cargo.toml`);
-      setLibStatus(prev => ({ ...prev, [name]: 'installed' }));
-      await fetchInstalled();
-    } catch (e) {
-      const msg = String(e);
-      addLog(`[Error] ${msg}`);
-      setLibStatus(prev => ({ ...prev, [name]: 'error' }));
-      setLibErrors(prev => ({ ...prev, [name]: msg }));
-    }
-  };
-
   const removeLib = async (name: string) => {
     if (!activeProjectPath) return;
     if (!confirm(`Remove package "${name}" from your project?`)) return;
@@ -197,8 +179,149 @@ export function LibraryManager() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
+  useEffect(() => {
+    setInstallPanelCrate(null);
+    setInstallPanelError(null);
+    setInstallPanelFeatures([]);
+    setInstallPanelChecked({});
+  }, [activeTab]);
+
   const getSelectedVersion = (name: string, fallback?: string) =>
     selectedVersion[name] ?? fallback ?? '';
+
+  const closeInstallPanel = () => {
+    setInstallPanelCrate(null);
+    setInstallPanelVersion(undefined);
+    setInstallPanelFeatures([]);
+    setInstallPanelError(null);
+    setInstallPanelChecked({});
+    setInstallPanelLoading(false);
+  };
+
+  const openInstallPanel = async (name: string, version?: string) => {
+    if (installPanelCrate === name) {
+      closeInstallPanel();
+      return;
+    }
+    setInstallPanelCrate(name);
+    setInstallPanelVersion(version);
+    setInstallPanelFeatures([]);
+    setInstallPanelError(null);
+    setInstallPanelChecked({});
+    setInstallPanelLoading(true);
+    try {
+      const feats = await invoke<string[]>("get_crate_features", { crateName: name });
+      const sorted = [...feats].filter(Boolean).sort((a, b) => a.localeCompare(b));
+      setInstallPanelFeatures(sorted);
+    } catch (e) {
+      setInstallPanelError(String(e));
+    } finally {
+      setInstallPanelLoading(false);
+    }
+  };
+
+  const installLib = async (name: string, version?: string, extraFeatures: string[] | null = null) => {
+    const status = getStatus(name);
+    if (status === 'installing' || status === 'removing' || !activeProjectPath) return;
+
+    const features =
+      extraFeatures && extraFeatures.length > 0 ? extraFeatures : null;
+    const featStr = features?.length ? ` --features ${features.join(",")}` : "";
+
+    setLibStatus(prev => ({ ...prev, [name]: 'installing' }));
+    setLibErrors(prev => {
+      const n = { ...prev };
+      delete n[name];
+      return n;
+    });
+    const versionNorm = version?.trim() ? version.trim() : null;
+    addLog(`> cargo add ${name}${versionNorm ? `@${versionNorm}` : ""}${featStr}`);
+
+    try {
+      await invoke("add_library_to_project", {
+        projectPath: activeProjectPath,
+        libName: name,
+        version: versionNorm,
+        features,
+      });
+      addLog(`✓ ${name} added to Cargo.toml`);
+      setLibStatus(prev => ({ ...prev, [name]: 'installed' }));
+      closeInstallPanel();
+      await fetchInstalled();
+    } catch (e) {
+      const msg = String(e);
+      addLog(`[Error] ${msg}`);
+      setLibStatus(prev => ({ ...prev, [name]: 'error' }));
+      setLibErrors(prev => ({ ...prev, [name]: msg }));
+    }
+  };
+
+  const confirmInstallFromPanel = () => {
+    if (!installPanelCrate || !activeProjectPath) return;
+    const picked = Object.entries(installPanelChecked)
+      .filter(([, on]) => on)
+      .map(([f]) => f);
+    const fallback =
+      getVersion(installPanelCrate) || installPanelVersion || undefined;
+    const verRaw = getSelectedVersion(installPanelCrate, fallback);
+    const version = verRaw.trim() || undefined;
+    void installLib(installPanelCrate, version, picked.length ? picked : null);
+  };
+
+  const renderInstallFeaturePanel = (crateName: string) => {
+    if (installPanelCrate !== crateName) return null;
+    const selectedCount = Object.values(installPanelChecked).filter(Boolean).length;
+
+    return (
+      <div className="bm-install-panel">
+        <div className="bm-install-panel-hint">
+          Optional Cargo features (from crates.io). Leave all unchecked for a plain <code style={{ fontSize: 9 }}>cargo add</code> (crate default features still apply).
+        </div>
+        {installPanelLoading && (
+          <div style={{ fontSize: 11, color: "var(--ide-text-faint)" }}>Loading feature list…</div>
+        )}
+        {installPanelError && !installPanelLoading && (
+          <div style={{ fontSize: 10.5, color: "#e06c75", marginBottom: 6 }}>
+            {installPanelError}
+          </div>
+        )}
+        {!installPanelLoading && installPanelFeatures.length > 0 && (
+          <div className="bm-install-features-grid">
+            {installPanelFeatures.map(feat => (
+              <label key={feat} className="bm-install-feature-row">
+                <input
+                  type="checkbox"
+                  checked={!!installPanelChecked[feat]}
+                  onChange={e =>
+                    setInstallPanelChecked(prev => ({ ...prev, [feat]: e.target.checked }))
+                  }
+                />
+                <span>{feat}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        <div className="bm-install-panel-actions">
+          <button
+            type="button"
+            className="bm-btn bm-btn--install"
+            onClick={() => void confirmInstallFromPanel()}
+            disabled={
+              !activeProjectPath ||
+              libStatus[crateName] === "installing" ||
+              Object.values(libStatus).some(s => s === "installing" || s === "removing")
+            }
+          >
+            <DownloadIcon sx={{ fontSize: 13 }} />
+            {selectedCount > 0 ? `Install (${selectedCount} features)` : "Install"}
+          </button>
+          <button type="button" className="bm-btn--ghost-sm" onClick={closeInstallPanel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   // Render action buttons — mirrors BoardManager button logic exactly
   const renderActions = (name: string, version?: string) => {
@@ -251,15 +374,15 @@ export function LibraryManager() {
         </div>
       );
     }
-    // idle
     return (
       <button
         className="bm-btn bm-btn--install"
-        onClick={() => installLib(name, version)}
+        onClick={() => void openInstallPanel(name, version)}
         disabled={isAnyBusy}
+        title="Choose optional Cargo features, then install"
       >
         <DownloadIcon sx={{ fontSize: 13 }} />
-        INSTALL
+        INSTALL…
       </button>
     );
   };
@@ -394,8 +517,13 @@ export function LibraryManager() {
                       <InfoOutlinedIcon sx={{ fontSize: 15 }} />
                     </button>
 
-                    {renderActions(lib.name)}
+                    {renderActions(
+                      lib.name,
+                      getSelectedVersion(lib.name, iVersion || undefined) || undefined
+                    )}
                   </div>
+
+                  {renderInstallFeaturePanel(lib.name)}
 
                   {status === 'installing' && (
                     <div className="bm-progress-bar">
@@ -477,8 +605,13 @@ export function LibraryManager() {
                           <InfoOutlinedIcon sx={{ fontSize: 15 }} />
                         </button>
 
-                        {renderActions(lib.name, getSelectedVersion(lib.name, lib.newest_version))}
+                        {renderActions(
+                          lib.name,
+                          getSelectedVersion(lib.name, lib.newest_version) || undefined
+                        )}
                       </div>
+
+                      {renderInstallFeaturePanel(lib.name)}
 
                       {status === 'installing' && (
                         <div className="bm-progress-bar">
@@ -561,6 +694,8 @@ export function LibraryManager() {
                         {renderActions(lib.name, lib.version)}
                       </div>
 
+                      {renderInstallFeaturePanel(lib.name)}
+
                       {status === 'removing' && (
                         <div className="bm-progress-bar">
                           <div className="bm-progress-bar-fill bm-progress-bar-fill--indeterminate" />
@@ -622,7 +757,31 @@ export function LibraryManager() {
                         "{diag.help}"
                       </div>
 
-                      <div className="bm-card-actions" style={{ marginTop: '8px' }}>
+                      <div className="bm-card-actions" style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {diag.crate_name === "ssd1306" && diag.missing_feature === "i2c" && (
+                          <button
+                            className="bm-btn bm-btn--install"
+                            style={{ background: '#e5a50a' }}
+                            title="ssd1306 no longer exposes an `i2c` Cargo feature; remove it from Cargo.toml if present."
+                            onClick={async () => {
+                              if (!activeProjectPath) return;
+                              try {
+                                await invoke("remove_feature_from_cargo", {
+                                  projectPath: activeProjectPath,
+                                  crateName: diag.crate_name,
+                                  feature: diag.missing_feature,
+                                });
+                                addLog(`✓ Removed obsolete feature 'i2c' from ${diag.crate_name}`);
+                                setFeatureDiagnostics(featureDiagnostics.filter((_, i) => i !== idx));
+                                fetchInstalled();
+                              } catch (e) {
+                                addLog(`[Error] Failed to remove feature: ${e}`);
+                              }
+                            }}
+                          >
+                            Remove obsolete i2c
+                          </button>
+                        )}
                         <button
                           className="bm-btn bm-btn--install"
                           style={{ background: 'var(--ide-accent)' }}

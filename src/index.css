@@ -1755,6 +1755,62 @@ select {
   gap: 6px;
 }
 
+.bm-install-panel {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--ide-border-light);
+}
+
+.bm-install-panel-hint {
+  font-size: 10px;
+  color: var(--ide-text-faint);
+  margin-bottom: 6px;
+  line-height: 1.35;
+}
+
+.bm-install-features-grid {
+  max-height: 160px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 6px 0 8px;
+}
+
+.bm-install-feature-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--ide-text);
+}
+
+.bm-install-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.bm-btn--ghost-sm {
+  background: transparent;
+  color: var(--ide-text-faint);
+  border: 1px solid var(--ide-border);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bm-btn--ghost-sm:hover {
+  color: var(--ide-text);
+  border-color: var(--ide-text-faint);
+}
+
 .bm-version-select {
   background: var(--ide-toolbar);
   border: 1px solid #383d49;

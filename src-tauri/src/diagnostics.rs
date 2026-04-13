@@ -376,6 +376,52 @@ fn extract_gated_feature(label: &str) -> Option<&str> {
     None
 }
 
+/// Human-readable hint when rustc suggests a feature that no longer exists on crates.io.
+fn obsolete_feature_hint(crate_name: &str, feature: &str) -> Option<&'static str> {
+    match (crate_name, feature) {
+        (
+            "ssd1306",
+            "i2c",
+        ) => Some(
+            "The `i2c` feature was removed from ssd1306 in newer releases (0.9+). I2C support does not use a Cargo feature anymore—remove `i2c` from [dependencies.ssd1306].features if it is listed. Enable `embedded-graphics-core` / `graphics` only if you use embedded-graphics integration.",
+        ),
+        _ => None,
+    }
+}
+
+async fn fetch_crate_feature_keys(crate_name: &str) -> Result<Vec<String>, String> {
+    let url = format!("https://crates.io/api/v1/crates/{}", crate_name);
+    let client = reqwest::Client::builder()
+        .user_agent("Rusteon-IDE/0.1.0")
+        .build()
+        .map_err(|e: reqwest::Error| e.to_string())?;
+
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e: reqwest::Error| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Crates.io returned status: {}", resp.status()));
+    }
+
+    let json: serde_json::Value = resp.json().await.map_err(|e: reqwest::Error| e.to_string())?;
+
+    if let Some(versions) = json.get("versions").and_then(|v| v.as_array()) {
+        if let Some(latest) = versions.first() {
+            if let Some(features_obj) = latest.get("features").and_then(|f| f.as_object()) {
+                let mut features: Vec<String> = features_obj.keys().cloned().collect();
+                features.sort();
+                return Ok(features);
+            }
+            return Ok(Vec::new());
+        }
+    }
+
+    Err("Could not find feature list for this crate".to_string())
+}
+
 fn extract_crate_from_path(path: &str) -> Option<String> {
     // "/home/.../index.crates.io-xyz/esp-hal-1.0.0/src/lib.rs"
     if let Some(idx) = path.find("/index.crates.io-") {
@@ -397,11 +443,74 @@ fn extract_crate_from_path(path: &str) -> Option<String> {
 }
 
 #[tauri::command]
+pub async fn remove_feature_from_cargo(
+    project_path: String,
+    crate_name: String,
+    feature: String,
+) -> Result<(), String> {
+    let cargo_path = PathBuf::from(&project_path).join("Cargo.toml");
+    if !cargo_path.exists() {
+        return Err("Cargo.toml not found".to_string());
+    }
+
+    let content = fs::read_to_string(&cargo_path).map_err(|e| format!("Failed to read Cargo.toml: {}", e))?;
+    let mut doc = content
+        .parse::<DocumentMut>()
+        .map_err(|e| format!("Failed to parse Cargo.toml: {}", e))?;
+
+    if let Some(deps) = doc.get_mut("dependencies").and_then(|i| i.as_table_mut()) {
+        if let Some(dep) = deps.get_mut(&crate_name) {
+            if let Some(table) = dep.as_inline_table_mut() {
+                if let Some(features) = table.get_mut("features") {
+                    if let Some(arr) = features.as_array_mut() {
+                        arr.retain(|v| v.as_str().map(|s| s != feature.as_str()).unwrap_or(true));
+                    }
+                }
+            } else if let Some(table) = dep.as_table_mut() {
+                if let Some(features) = table.get_mut("features") {
+                    if let Some(arr) = features.as_array_mut() {
+                        arr.retain(|v| v.as_str().map(|s| s != feature.as_str()).unwrap_or(true));
+                    }
+                }
+            }
+        } else {
+            return Err(format!("Dependency '{}' not found in Cargo.toml", crate_name));
+        }
+    } else {
+        return Err("No [dependencies] table found in Cargo.toml".to_string());
+    }
+
+    fs::write(&cargo_path, doc.to_string()).map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn add_feature_to_cargo(
     project_path: String,
     crate_name: String,
     feature: String,
 ) -> Result<(), String> {
+    if let Some(hint) = obsolete_feature_hint(crate_name.as_str(), feature.as_str()) {
+        return Err(format!(
+            "{} Use \"Remove feature\" if this feature is already listed in Cargo.toml.",
+            hint
+        ));
+    }
+
+    match fetch_crate_feature_keys(crate_name.as_str()).await {
+        Ok(keys) if !keys.is_empty() && !keys.contains(&feature) => {
+            return Err(format!(
+                "Feature `{}` is not available for crate `{}` on crates.io (latest metadata). Valid features include: {}.",
+                feature,
+                crate_name,
+                keys.join(", ")
+            ));
+        }
+        Ok(_) | Err(_) => {
+            // Empty list or network failure: still try to apply (offline / odd crates).
+        }
+    }
+
     let cargo_path = PathBuf::from(&project_path).join("Cargo.toml");
     if !cargo_path.exists() {
         return Err("Cargo.toml not found".to_string());
@@ -486,35 +595,7 @@ pub struct CrateFeatures {
 
 #[tauri::command]
 pub async fn get_crate_features(crate_name: String) -> Result<Vec<String>, String> {
-    let url = format!("https://crates.io/api/v1/crates/{}", crate_name);
-    let client = reqwest::Client::builder()
-        .user_agent("Rusteon-IDE/0.1.0")
-        .build()
-        .map_err(|e: reqwest::Error| e.to_string())?;
-
-    let resp = client.get(&url).send().await.map_err(|e: reqwest::Error| e.to_string())?;
-    
-    if !resp.status().is_success() {
-        return Err(format!("Crates.io returned status: {}", resp.status()));
-    }
-
-    let json: serde_json::Value = resp.json().await.map_err(|e: reqwest::Error| e.to_string())?;
-    
-    // Attempt to extract features from the newest version which is stored in versions[0].features
-    if let Some(versions) = json.get("versions").and_then(|v| v.as_array()) {
-        if let Some(latest) = versions.first() {
-            if let Some(features_obj) = latest.get("features").and_then(|f| f.as_object()) {
-                let mut features = Vec::new();
-                for key in features_obj.keys() {
-                    features.push(key.clone());
-                }
-                return Ok(features);
-            }
-            return Ok(Vec::new()); // No features
-        }
-    }
-    
-    Err("Could not find feature list for this crate".to_string())
+    fetch_crate_feature_keys(crate_name.as_str()).await
 }
 
 #[tauri::command]

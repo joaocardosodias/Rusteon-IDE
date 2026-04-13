@@ -7,6 +7,7 @@ import { BoardManager } from "./BoardManager";
 import { Editor } from "./Editor";
 import { BoardSelectorButton } from "./BoardSelectorButton";
 import { SerialPortDialog } from "./SerialPortDialog";
+import { stripAnsi } from "../lib/stripAnsi";
 import { BoardPortDialog } from "./BoardPortDialog";
 import { AlertDialog } from "./AlertDialog";
 import { ProjectExplorer } from "./ProjectExplorer";
@@ -292,20 +293,22 @@ export function IDELayout() {
         return; // swallow — don't show raw telemetry bytes in the console
       }
 
+      const display = stripAnsi(raw);
       const now = new Date();
       const ts = now.toLocaleTimeString('en-US', { hour12: false }) + '.' + now.getMilliseconds().toString().padStart(3, '0');
       setSerialLines(prev => {
-        const next: LogLine[] = [...prev, { text: raw, type: "plain" as const, timestamp: ts }];
+        const next: LogLine[] = [...prev, { text: display, type: "plain" as const, timestamp: ts }];
         return next.length > 800 ? next.slice(next.length - 800) : next;
       });
     });
 
     const handleDapRtt = (e: any) => {
       const { text, type } = e.detail;
+      const clean = typeof text === "string" ? stripAnsi(text) : text;
       const now = new Date();
       const ts = now.toLocaleTimeString('en-US', { hour12: false }) + '.' + now.getMilliseconds().toString().padStart(3, '0');
       setSerialLines(prev => {
-        const next: LogLine[] = [...prev, { text, type: type || "plain", timestamp: ts }];
+        const next: LogLine[] = [...prev, { text: clean, type: type || "plain", timestamp: ts }];
         return next.length > 800 ? next.slice(next.length - 800) : next;
       });
     };

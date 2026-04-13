@@ -371,6 +371,7 @@ pub fn run() {
             diagnostics::check_project,
             diagnostics::get_crate_features,
             diagnostics::add_feature_to_cargo,
+            diagnostics::remove_feature_from_cargo,
             diagnostics::add_crate_to_cargo,
             check_installed_targets,
             install_board_target,
