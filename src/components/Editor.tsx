@@ -53,21 +53,6 @@ export function Editor() {
           }));
           monaco.editor.setModelMarkers(model, "rust-analyzer", markers);
 
-          // Error Lens — line background highlight only
-          const bgDecorations = diagnostics.map((d: any) => {
-            const isError = d.severity === 1;
-            const isWarning = d.severity === 2;
-            const colorClass = isError ? 'error-lens-error-bg' : isWarning ? 'error-lens-warning-bg' : 'error-lens-info-bg';
-            const line = d.range.start.line + 1;
-            return {
-              range: new monaco.Range(line, 1, line, 1),
-              options: {
-                isWholeLine: true,
-                className: `error-lens-line-bg ${colorClass}`,
-              }
-            };
-          });
-          model._errorLensDecorations = model.deltaDecorations(model._errorLensDecorations || [], bgDecorations);
         };
 
         const models = monaco.editor.getModels();
@@ -78,54 +63,6 @@ export function Editor() {
           }
         }
 
-        const currentFile = getActiveFile();
-        if (currentFile && editorRef.current) {
-          const model = editorRef.current.getModel();
-          if (model && `file://${currentFile}` === uri) {
-            // NOTE: applyDiagnosticsToModel is already called for this model in the loop above.
-            
-            // Error Lens — IContentWidget for each diagnostic
-            const editor = editorRef.current;
-            // Remove old widgets first
-            (editor._errorLensWidgets || []).forEach((w: any) => editor.removeContentWidget(w));
-            editor._errorLensWidgets = [];
-
-            // Group diagnostics by line to prevent overlapping. Show most severe active per line.
-            const grouped = new Map<number, any>();
-            diagnostics.forEach((d: any) => {
-              const line = d.range.start.line + 1;
-              const existing = grouped.get(line);
-              if (!existing || d.severity < existing.severity) {
-                grouped.set(line, d);
-              }
-            });
-
-            grouped.forEach((d: any, line: number) => {
-              const isError = d.severity === 1;
-              const isWarning = d.severity === 2;
-              const maxCol = model.getLineMaxColumn(line);
-              const shortMessage = d.message.split('\n')[0];
-
-              const domNode = document.createElement('span');
-              domNode.className = `error-lens-widget ${isError ? 'error-lens-error' : isWarning ? 'error-lens-warning' : 'error-lens-info'}`;
-              domNode.textContent = `  ${shortMessage}`;
-              domNode.setAttribute('aria-hidden', 'true');
-
-              const widgetId = `error-lens-${line}-${Date.now()}-${Math.random()}`;
-              const widget = {
-                getId: () => widgetId,
-                getDomNode: () => domNode,
-                getPosition: () => ({
-                  position: { lineNumber: line, column: maxCol },
-                  preference: [monaco.editor.ContentWidgetPositionPreference.EXACT]
-                })
-              };
-
-              editor.addContentWidget(widget);
-              editor._errorLensWidgets.push(widget);
-            });
-          }
-        }
       });
 
       const started = await lspRef.current.start(activeProjectPath);
@@ -513,7 +450,7 @@ export function Editor() {
           smoothScrolling: true,
           contextmenu: true,
           renderLineHighlight: "line",
-          lineNumbers: "relative",
+          lineNumbers: "on",
           glyphMargin: true, 
           folding: true,
           padding: { top: 12 },
