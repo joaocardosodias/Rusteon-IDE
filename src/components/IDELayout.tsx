@@ -334,7 +334,10 @@ export function IDELayout() {
     };
   }, []);
 
+  const cancelRef = useRef(false);
+
   const handleCancelProcess = async () => {
+    cancelRef.current = true;
     try {
       await invoke("cancel_process");
     } catch (e) {
@@ -391,6 +394,7 @@ export function IDELayout() {
       return;
     }
     setIsBuilding(true);
+    cancelRef.current = false;
     setActiveBottomTab("out");
     setOutputLines([{ text: "> cargo build --release", type: "prompt" }]);
     
@@ -414,7 +418,9 @@ export function IDELayout() {
       setFeatureDiagnostics([]); // clear on success
     } catch (e) {
       setOutputLines(prev => [...prev, { text: `[Error] ${e}`, type: "err" }]);
-      await runDiagnosticsOnFailure();
+      if (String(e) !== "Build cancelled" && !String(e).includes("cancelled")) {
+        await runDiagnosticsOnFailure();
+      }
     } finally {
       setIsBuilding(false);
     }
@@ -516,6 +522,7 @@ export function IDELayout() {
       return;
     }
     setIsFlashing(true);
+    cancelRef.current = false;
     setActiveBottomTab("out");
     
     setOutputLines([{ text: "> Upload starting...", type: "prompt" }]);
@@ -563,6 +570,8 @@ export function IDELayout() {
       setOutputLines(prev => [...prev, { text: "> cargo build --release", type: "prompt" }]);
       await invoke<string>("build_project", { projectPath: activeProjectPath });
       
+      if (cancelRef.current) throw new Error("Build cancelled");
+
       // 3. Flash
       setOutputLines(prev => [...prev, { text: "> Flashing...", type: "prompt" }]);
       const res = await invoke<string>("flash_firmware", {
@@ -593,7 +602,9 @@ export function IDELayout() {
       }
     } catch (e) {
       setOutputLines(prev => [...prev, { text: `[Error] Deploy failed: ${e}`, type: "err" }]);
-      await runDiagnosticsOnFailure();
+      if (String(e) !== "Build cancelled" && !String(e).includes("cancelled")) {
+        await runDiagnosticsOnFailure();
+      }
     } finally {
       setIsBuilding(false);
       setIsFlashing(false);

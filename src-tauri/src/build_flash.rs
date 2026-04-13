@@ -3,6 +3,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 pub struct ProcessState {
     pub child: Mutex<Option<Child>>,
 }
@@ -17,7 +20,13 @@ struct IdeLogMessage {
 pub fn cancel_process(state: State<'_, ProcessState>) -> Result<(), String> {
     let mut guard = state.child.lock().map_err(|e| e.to_string())?;
     if let Some(mut child) = guard.take() {
-        // Try to kill the process
+        // Try to kill the process (and its entire process group on Unix)
+        #[cfg(unix)]
+        {
+            let pid = child.id();
+            let _ = Command::new("kill").arg("-9").arg(format!("-{}", pid)).output();
+        }
+        
         let _ = child.kill();
         let _ = child.wait(); // Clean up zombie
     }
@@ -60,6 +69,10 @@ fn isolated_cargo_cmd(extra_args: &[&str], project_path: &str) -> Command {
     cmd.current_dir(project_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+        
+    #[cfg(unix)]
+    cmd.process_group(0);
+    
     cmd
 }
 
@@ -264,6 +277,9 @@ pub async fn flash_firmware(
 
     actual_cmd.env_remove("RUSTUP_TOOLCHAIN").env_remove("CARGO");
     actual_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    #[cfg(unix)]
+    actual_cmd.process_group(0);
 
     let mut child = match actual_cmd.spawn() {
         Ok(c) => c,
