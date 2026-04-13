@@ -1,5 +1,5 @@
 [dependencies]
-rp2040-hal = { version = "0.10.0", features = ["rt", "critical-section-impl"] }
+rp2040-hal = { version = "0.12.0", features = ["rt", "critical-section-impl"] }
 rp2040-boot2 = "0.3.0"
 cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7.3"
