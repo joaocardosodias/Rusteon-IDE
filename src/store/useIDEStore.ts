@@ -119,7 +119,13 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   activeProjectPath: null,
   activeProjectName: null,
   isWizardOpen: false,
-  setActiveProject: (path, name) => set({ activeProjectPath: path, activeProjectName: name }),
+  setActiveProject: (path, name) => set({ 
+    activeProjectPath: path, 
+    activeProjectName: name,
+    openTabs: [],
+    activeFile: null,
+    content: '// Welcome to Rusteon IDE\n// Open a project to get started'
+  }),
   setWizardOpen: (open) => set({ isWizardOpen: open }),
   
   // Board selector state
