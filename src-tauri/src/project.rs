@@ -83,31 +83,309 @@ pub struct ProjectTemplate {
     pub name: String,
 }
 
+/// Options passed to `esp-generate` for Espressif targets (headless mode).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EspGenerateOptions {
+    #[serde(default)]
+    pub embassy: bool,
+    #[serde(default)]
+    pub alloc: bool,
+    #[serde(default)]
+    pub wifi: bool,
+    #[serde(default)]
+    pub ble: bool,
+    /// `-o esp-backtrace`
+    #[serde(default = "default_esp_backtrace")]
+    pub esp_backtrace: bool,
+    /// `-o log`
+    #[serde(default)]
+    pub log: bool,
+}
+
+fn default_esp_backtrace() -> bool {
+    true
+}
+
+impl Default for EspGenerateOptions {
+    fn default() -> Self {
+        Self {
+            embassy: false,
+            alloc: false,
+            wifi: false,
+            ble: false,
+            esp_backtrace: true,
+            log: false,
+        }
+    }
+}
+
+/// Options for `cargo generate` (STM32 / RP2040 templates).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CargoGenerateOptions {
+    /// `embassy` | `stm32Hal` | `rp2040Official`
+    pub template_kind: String,
+    #[serde(default)]
+    pub chip: Option<String>,
+    #[serde(default)]
+    pub stm32_hal_version: Option<String>,
+    #[serde(default)]
+    pub rtic: bool,
+    #[serde(default)]
+    pub defmt: bool,
+    #[serde(default)]
+    pub svd: bool,
+    #[serde(default)]
+    pub flash_method: Option<String>,
+}
+
+const GIT_EMBASSY_TEMPLATE: &str = "https://github.com/lulf/embassy-template";
+const GIT_STM32_HAL_TEMPLATE: &str = "https://github.com/burrbull/stm32-template";
+const GIT_RP2040_TEMPLATE: &str = "https://github.com/rp-rs/rp2040-project-template";
+
+fn default_embassy_chip_for_board(board_id: &str) -> &'static str {
+    match board_id {
+        "rp2040" => "rp2040",
+        "stm32f4" => "stm32f407vg",
+        _ => "rp2040",
+    }
+}
+
+fn run_cargo_generate(
+    parent_path: &Path,
+    project_name: &str,
+    git_url: &str,
+    defines: &[(&str, String)],
+) -> Result<(), String> {
+    let mut cmd = Command::new("cargo");
+    cmd.arg("generate")
+        .arg("--git")
+        .arg(git_url)
+        .arg("--name")
+        .arg(project_name)
+        .arg("--destination")
+        .arg(parent_path)
+        .arg("--force-git-init")
+        .arg("--allow-commands");
+
+    for (key, value) in defines {
+        cmd.arg("-d").arg(format!("{}={}", key, value));
+    }
+
+    let output = cmd.output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "cargo-generate not available. Install with: cargo install cargo-generate --locked".to_string()
+        } else {
+            format!("Failed to run cargo generate: {}", e)
+        }
+    })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "cargo generate failed (exit code {:?}):\n{}\n{}",
+            output.status.code(),
+            stdout.trim_end(),
+            stderr.trim_end()
+        ));
+    }
+
+    Ok(())
+}
+
+fn run_embedded_cargo_generate(
+    parent_path: &Path,
+    project_name: &str,
+    board_id: &str,
+    opts: &CargoGenerateOptions,
+) -> Result<(), String> {
+    match opts.template_kind.as_str() {
+        "embassy" => {
+            let chip = opts
+                .chip
+                .clone()
+                .unwrap_or_else(|| default_embassy_chip_for_board(board_id).to_string());
+            let defines = vec![("chip", chip)];
+            run_cargo_generate(parent_path, project_name, GIT_EMBASSY_TEMPLATE, &defines)?;
+        }
+        "stm32Hal" => {
+            let chip = opts
+                .chip
+                .clone()
+                .unwrap_or_else(|| "stm32f407vg".to_string());
+            let version = opts
+                .stm32_hal_version
+                .clone()
+                .unwrap_or_else(|| "last-release".to_string());
+            if version != "last-release" && version != "git" {
+                return Err(format!(
+                    "stm32 HAL version must be 'last-release' or 'git', got: {}",
+                    version
+                ));
+            }
+            let defines = vec![
+                ("chip", chip),
+                ("version", version),
+                ("rtic", opts.rtic.to_string()),
+                ("defmt_enabled", opts.defmt.to_string()),
+                ("svd", opts.svd.to_string()),
+            ];
+            run_cargo_generate(
+                parent_path,
+                project_name,
+                GIT_STM32_HAL_TEMPLATE,
+                &defines,
+            )?;
+        }
+        "rp2040Official" => {
+            let flash = opts
+                .flash_method
+                .clone()
+                .unwrap_or_else(|| "probe-rs".to_string());
+            let allowed = ["probe-rs", "picotool", "custom", "none"];
+            if !allowed.contains(&flash.as_str()) {
+                return Err(format!(
+                    "flash_method must be one of {:?}, got: {}",
+                    allowed, flash
+                ));
+            }
+            let defines = vec![("flash_method", flash)];
+            run_cargo_generate(parent_path, project_name, GIT_RP2040_TEMPLATE, &defines)?;
+        }
+        other => {
+            return Err(format!(
+                "Unknown cargo-generate template kind: {} (expected embassy | stm32Hal | rp2040Official)",
+                other
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn is_espressif_template(template: &str) -> bool {
+    matches!(
+        template,
+        "esp32" | "esp32c2" | "esp32c3" | "esp32c6" | "esp32h2" | "esp32s2" | "esp32s3"
+    )
+}
+
+fn run_esp_generate(
+    parent_path: &Path,
+    project_name: &str,
+    chip: &str,
+    opts: &EspGenerateOptions,
+) -> Result<(), String> {
+    // esp-generate constraints (see `esp-generate list-options`):
+    // - embassy, wifi, ble-bleps require -o unstable-hal
+    // - wifi, ble-bleps require -o alloc
+    let needs_unstable_hal = opts.embassy || opts.wifi || opts.ble;
+    let needs_alloc = opts.alloc || opts.wifi || opts.ble;
+
+    let mut cmd = Command::new("esp-generate");
+    cmd.arg("--chip")
+        .arg(chip)
+        .arg("--headless")
+        .arg("-O")
+        .arg(parent_path)
+        .arg("--skip-update-check");
+
+    if needs_unstable_hal {
+        cmd.args(["-o", "unstable-hal"]);
+    }
+    if needs_alloc {
+        cmd.args(["-o", "alloc"]);
+    }
+    if opts.embassy {
+        cmd.args(["-o", "embassy"]);
+    }
+    if opts.wifi {
+        cmd.args(["-o", "wifi"]);
+    }
+    if opts.ble {
+        cmd.args(["-o", "ble-bleps"]);
+    }
+    if opts.esp_backtrace {
+        cmd.args(["-o", "esp-backtrace"]);
+    }
+    if opts.log {
+        cmd.args(["-o", "log"]);
+    }
+
+    cmd.arg(project_name);
+
+    let output = cmd.output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "esp-generate not found on PATH. Install with: cargo install esp-generate --locked"
+                .to_string()
+        } else {
+            format!("Failed to run esp-generate: {}", e)
+        }
+    })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "esp-generate failed (exit code {:?}):\n{}\n{}",
+            output.status.code(),
+            stdout.trim_end(),
+            stderr.trim_end()
+        ));
+    }
+
+    Ok(())
+}
+
 use tauri::Manager;
 
 #[tauri::command]
 pub fn create_new_project(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     name: String,
     parent_dir: String,
     template: String,
+    esp_options: Option<EspGenerateOptions>,
+    cargo_generate_options: Option<CargoGenerateOptions>,
 ) -> Result<String, String> {
     let parent_path = PathBuf::from(&parent_dir);
     if !parent_path.exists() {
-        return Err(format!("A pasta destino não existe: {}", parent_dir));
+        return Err(format!("Destination folder does not exist: {}", parent_dir));
     }
 
     let project_path = parent_path.join(&name);
     if project_path.exists() {
-        return Err(format!("Já existe uma pasta com o nome '{}' nesse local.", name));
+        return Err(format!(
+            "A folder named '{}' already exists in that location.",
+            name
+        ));
     }
 
-    // Pass 1: Run standard `cargo new`
+    if template == "standard" {
+        run_cargo_new(&parent_path, &name)?;
+        return Ok(project_path.to_string_lossy().to_string());
+    }
+
+    if is_espressif_template(&template) {
+        let opts = esp_options.unwrap_or_default();
+        run_esp_generate(&parent_path, &name, &template, &opts)?;
+        return Ok(project_path.to_string_lossy().to_string());
+    }
+
+    let cg = cargo_generate_options
+        .ok_or_else(|| "cargo generate options are required for this board.".to_string())?;
+    run_embedded_cargo_generate(&parent_path, &name, template.as_str(), &cg)?;
+
+    Ok(project_path.to_string_lossy().to_string())
+}
+
+fn run_cargo_new(parent_path: &Path, name: &str) -> Result<(), String> {
     let output = Command::new("cargo")
         .arg("new")
-        .arg(&name)
+        .arg(name)
         .arg("--bin")
-        .current_dir(&parent_path)
+        .current_dir(parent_path)
         .output()
         .map_err(|e| format!("Failed to invoke cargo new: {}", e))?;
 
@@ -117,64 +395,6 @@ pub fn create_new_project(
             String::from_utf8_lossy(&output.stderr)
         ));
     }
-
-    // Pass 2: Apply templates if necessary
-    match template.as_str() {
-        "standard" => {}
-        チップ => apply_esp_template(&app, &project_path, チップ)?,
-    }
-
-    Ok(project_path.to_string_lossy().to_string())
-}
-
-fn apply_esp_template(app: &tauri::AppHandle, project_path: &PathBuf, chip: &str) -> Result<(), String> {
-    let base_res_dir = app.path().resource_dir().map_err(|e| e.to_string())?;
-    // local testing fallback or resource path
-    let mut tpl_dir = base_res_dir.join("templates").join(chip);
-    if !tpl_dir.exists() {
-        // Fallback for tauri dev where resources might just be in CWD
-        tpl_dir = std::env::current_dir().unwrap().join("templates").join(chip);
-    }
-    
-    if !tpl_dir.exists() {
-        return Err(format!("Template directory for '{}' not found at {:?}", chip, tpl_dir));
-    }
-
-    // 1. Overwrite main.rs
-    fs::copy(tpl_dir.join("main.rs"), project_path.join("src").join("main.rs"))
-        .map_err(|e| format!("Error copying main.rs from template: {}", e))?;
-
-    // 2. Intelligent Merge Cargo.toml using toml_edit
-    let target_toml = project_path.join("Cargo.toml");
-    let target_content = fs::read_to_string(&target_toml).map_err(|e| e.to_string())?;
-    let mut target_doc = target_content.parse::<toml_edit::DocumentMut>().map_err(|e| e.to_string())?;
-
-    let source_toml = tpl_dir.join("Cargo.toml");
-    if source_toml.exists() {
-        let source_content = fs::read_to_string(&source_toml).map_err(|e| e.to_string())?;
-        let source_doc = source_content.parse::<toml_edit::DocumentMut>().map_err(|e| e.to_string())?;
-
-        // Smart merge: Add [dependencies] from template without destroying original formatting
-        if let Some(deps) = source_doc.get("dependencies") {
-            target_doc["dependencies"] = deps.clone();
-        }
-        
-        fs::write(&target_toml, target_doc.to_string()).map_err(|e| e.to_string())?;
-    }
-
-    // 3. Copy .cargo/config.toml
-    let dot_cargo = project_path.join(".cargo");
-    fs::create_dir_all(&dot_cargo).map_err(|e| e.to_string())?;
-    fs::copy(tpl_dir.join(".cargo").join("config.toml"), dot_cargo.join("config.toml"))
-        .map_err(|e| format!("Config.toml error: {}", e))?;
-
-    // 4. Copy rust-toolchain.toml (if it exists)
-    let tc_path = tpl_dir.join("rust-toolchain.toml");
-    if tc_path.exists() {
-        fs::copy(&tc_path, project_path.join("rust-toolchain.toml"))
-            .map_err(|e| format!("Error copying rust-toolchain.toml: {}", e))?;
-    }
-
     Ok(())
 }
 
@@ -265,20 +485,20 @@ pub fn detect_cargo_target(project_path: String) -> Result<Option<String>, Strin
 pub fn update_cargo_target(project_path: String, new_target: String) -> Result<(), String> {
     let config_path = Path::new(&project_path).join(".cargo").join("config.toml");
     if !config_path.exists() {
-        return Err("Arquivo .cargo/config.toml não encontrado no projeto.".to_string());
+        return Err(".cargo/config.toml not found in the project.".to_string());
     }
 
     let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
     let mut doc = content.parse::<toml_edit::DocumentMut>().map_err(|e| e.to_string())?;
 
     {
-        // Certifica-se de que [build] existe
+        // Ensure [build] exists
         let build = doc.entry("build").or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
         
         if let Some(build_table) = build.as_table_mut() {
             build_table.insert("target", toml_edit::value(new_target));
         } else {
-            return Err("Seção [build] no config.toml malformada.".to_string());
+            return Err("Malformed [build] section in config.toml.".to_string());
         }
     }
 
