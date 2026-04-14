@@ -98,6 +98,16 @@ function resolveExpectedTarget(currentTarget: string, board: any): string {
   return board.target;
 }
 
+function getAcceptedTargetsForBoard(board: any): string[] {
+  if (!board) return [];
+  const targets = [board.target];
+  const espIdfTarget = getEspIdfTargetForBoard(board.id);
+  if (espIdfTarget && !targets.includes(espIdfTarget)) {
+    targets.push(espIdfTarget);
+  }
+  return targets;
+}
+
 function tryNormalizeJsonInline(raw: string): string {
   try {
     return JSON.stringify(JSON.parse(raw));
@@ -424,6 +434,8 @@ export function IDELayout() {
   const handleCancelProcess = async () => {
     if (cancelRef.current) return;
     cancelRef.current = true;
+    setIsBuilding(false);
+    setIsFlashing(false);
     setOutputLines(prev => [...prev, { text: "⏹ Cancellation requested...", type: "warn" }]);
     try {
       await invoke("cancel_process");
@@ -482,6 +494,9 @@ export function IDELayout() {
     }
     setIsBuilding(true);
     cancelRef.current = false;
+    try {
+      await invoke("reset_process_cancel");
+    } catch {}
     setActiveBottomTab("out");
     setOutputLines([{ text: "> cargo build --release", type: "prompt" }]);
     
@@ -495,10 +510,16 @@ export function IDELayout() {
         const state = await invoke<{ installed_targets: string[] }>("check_installed_targets");
         const currentTarget = await invoke<string>("get_project_target", { projectPath: activeProjectPath });
         const expectedTarget = resolveExpectedTarget(currentTarget, selectedBoardDef);
-        if (!state.installed_targets.includes(expectedTarget)) {
-          setOutputLines(prev => [...prev, { text: `[Error] Target ${expectedTarget} for ${selectedBoardDef.name} is NOT INSTALLED! Please open the Board Manager and install it before building.`, type: "err" }]);
+        const acceptedTargets = getAcceptedTargetsForBoard(selectedBoardDef);
+        const hasAnyValidTarget = acceptedTargets.some(t => state.installed_targets.includes(t));
+        if (!hasAnyValidTarget) {
+          setOutputLines(prev => [...prev, { text: `[Error] No valid target found for ${selectedBoardDef.name}. Install one of: ${acceptedTargets.join(", ")}.`, type: "err" }]);
           setIsBuilding(false);
           return;
+        }
+
+        if (!acceptedTargets.includes(expectedTarget)) {
+          setOutputLines(prev => [...prev, { text: `[Warning] Project target (${expectedTarget}) is unusual for ${selectedBoardDef.name}.`, type: "warn" }]);
         }
       }
 
@@ -620,6 +641,9 @@ export function IDELayout() {
     }
     setIsFlashing(true);
     cancelRef.current = false;
+    try {
+      await invoke("reset_process_cancel");
+    } catch {}
     setActiveBottomTab("out");
     
     setOutputLines([{ text: "> Upload starting...", type: "prompt" }]);
@@ -644,10 +668,16 @@ export function IDELayout() {
         const state = await invoke<{ installed_targets: string[] }>("check_installed_targets");
         const currentTarget = await invoke<string>("get_project_target", { projectPath: activeProjectPath });
         const expectedTarget = resolveExpectedTarget(currentTarget, selectedBoardDef);
-        if (!state.installed_targets.includes(expectedTarget)) {
-          setOutputLines(prev => [...prev, { text: `[Error] Target ${expectedTarget} for ${selectedBoardDef.name} is NOT INSTALLED! Please open the Board Manager and install it before uploading.`, type: "err" }]);
+        const acceptedTargets = getAcceptedTargetsForBoard(selectedBoardDef);
+        const hasAnyValidTarget = acceptedTargets.some(t => state.installed_targets.includes(t));
+        if (!hasAnyValidTarget) {
+          setOutputLines(prev => [...prev, { text: `[Error] No valid target found for ${selectedBoardDef.name}. Install one of: ${acceptedTargets.join(", ")}.`, type: "err" }]);
           setIsFlashing(false);
           return;
+        }
+
+        if (!acceptedTargets.includes(expectedTarget)) {
+          setOutputLines(prev => [...prev, { text: `[Warning] Project target (${expectedTarget}) is unusual for ${selectedBoardDef.name}.`, type: "warn" }]);
         }
       }
 

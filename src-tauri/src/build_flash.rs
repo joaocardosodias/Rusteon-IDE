@@ -1,5 +1,6 @@
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
 
@@ -8,6 +9,7 @@ use std::os::unix::process::CommandExt;
 
 pub struct ProcessState {
     pub child: Mutex<Option<Child>>,
+    pub cancel_requested: AtomicBool,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -18,6 +20,17 @@ struct IdeLogMessage {
 
 #[tauri::command]
 pub fn cancel_process(state: State<'_, ProcessState>) -> Result<(), String> {
+    state.cancel_requested.store(true, Ordering::SeqCst);
+    terminate_running_child(state.inner())
+}
+
+#[tauri::command]
+pub fn reset_process_cancel(state: State<'_, ProcessState>) -> Result<(), String> {
+    state.cancel_requested.store(false, Ordering::SeqCst);
+    Ok(())
+}
+
+fn terminate_running_child(state: &ProcessState) -> Result<(), String> {
     let mut guard = state.child.lock().map_err(|e| e.to_string())?;
     if let Some(mut child) = guard.take() {
         // Try to kill the process (and its entire process group on Unix)
@@ -82,7 +95,11 @@ pub async fn build_project(
     state: State<'_, ProcessState>,
     project_path: String,
 ) -> Result<String, String> {
-    cancel_process(state.clone())?;
+    terminate_running_child(state.inner())?;
+
+    if state.cancel_requested.load(Ordering::SeqCst) {
+        return Err("Build cancelled".into());
+    }
 
     // ── Detect target triple intelligently ───────────────────────────────────
     let target_triple: Option<String> = crate::project::detect_cargo_target(project_path.clone())
@@ -144,10 +161,19 @@ pub async fn build_project(
 
     loop {
         std::thread::sleep(std::time::Duration::from_millis(100));
+        if state.cancel_requested.load(Ordering::SeqCst) {
+            let _ = terminate_running_child(state.inner());
+            return Err("Build cancelled".into());
+        }
         let mut guard = state.child.lock().unwrap();
         if let Some(child) = guard.as_mut() {
             match child.try_wait() {
                 Ok(Some(status)) => {
+                    if state.cancel_requested.load(Ordering::SeqCst) {
+                        let _ = guard.take();
+                        return Err("Build cancelled".into());
+                    }
+
                     let ok = status.success();
                     let _ = guard.take();
                     return if ok {
@@ -176,7 +202,11 @@ pub async fn flash_firmware(
     flash_tool: String,
     port: Option<String>,
 ) -> Result<String, String> {
-    cancel_process(state.clone())?;
+    terminate_running_child(state.inner())?;
+
+    if state.cancel_requested.load(Ordering::SeqCst) {
+        return Err("Flash cancelled".into());
+    }
 
     // ── Find the binary from cargo metadata ──────────────────────────────────
     let target_triple = crate::project::detect_cargo_target(project_path.clone())
@@ -317,10 +347,19 @@ pub async fn flash_firmware(
     // Wait loop
     loop {
         std::thread::sleep(std::time::Duration::from_millis(100));
+        if state.cancel_requested.load(Ordering::SeqCst) {
+            let _ = terminate_running_child(state.inner());
+            return Err("Flash cancelled".into());
+        }
         let mut guard = state.child.lock().unwrap();
         if let Some(child) = guard.as_mut() {
             match child.try_wait() {
                 Ok(Some(status)) => {
+                    if state.cancel_requested.load(Ordering::SeqCst) {
+                        let _ = guard.take();
+                        return Err("Flash cancelled".into());
+                    }
+
                     let s = status.success();
                     let _ = guard.take();
                     if s {

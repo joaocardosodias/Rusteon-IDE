@@ -344,6 +344,7 @@ pub fn run() {
         .setup(|app| {
             app.manage(build_flash::ProcessState {
                 child: std::sync::Mutex::new(None),
+                cancel_requested: std::sync::atomic::AtomicBool::new(false),
             });
             app.manage(serial::SerialState {
                 port: std::sync::Arc::new(std::sync::Mutex::new(None)),
@@ -358,6 +359,7 @@ pub fn run() {
             build_flash::build_project,
             build_flash::flash_firmware,
             build_flash::cancel_process,
+            build_flash::reset_process_cancel,
             get_serial_ports,
             project::read_dir_recursive,
             project::read_file_content,
