@@ -963,10 +963,43 @@ select {
 
 .serial-line {
   display: block;
+  padding: 2px 0;
 }
 
 .serial-line-text {
   color: var(--ide-text);
+}
+
+.serial-line-rich {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.serial-line-rich--plain {
+  gap: 8px;
+}
+
+.serial-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #7f8795;
+  font-size: 11px;
+}
+
+.serial-topic {
+  color: #aeb7c8;
+  font-size: 11px;
+  opacity: 0.95;
+}
+
+.serial-json {
+  color: #9da5b4;
+  font-size: 11.5px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  opacity: 0.9;
 }
 
 .serial-line-text--ok {

@@ -54,6 +54,17 @@ import MemoryIcon from "@mui/icons-material/Memory";
 type BTab = "out" | "serial" | "errors" | "lsp";
 type LogLine = { text: string; type: "ok" | "err" | "warn" | "dim" | "prompt" | "plain"; timestamp?: string };
 
+type ParsedSerialLine = {
+  structured: boolean;
+  level?: "I" | "W" | "E";
+  tick?: string;
+  tag?: string;
+  topic?: string;
+  payload?: string;
+  body?: string;
+  raw: string;
+};
+
 function logColor(type: LogLine["type"]) {
   if (type === "ok") return "var(--syn-str)";
   if (type === "err") return "var(--ide-err)";
@@ -85,6 +96,54 @@ function resolveExpectedTarget(currentTarget: string, board: any): string {
   const espIdfTarget = getEspIdfTargetForBoard(board.id);
   if (espIdfTarget && currentTarget === espIdfTarget) return espIdfTarget;
   return board.target;
+}
+
+function tryNormalizeJsonInline(raw: string): string {
+  try {
+    return JSON.stringify(JSON.parse(raw));
+  } catch {
+    return raw;
+  }
+}
+
+function parseSerialLine(rawText: string): ParsedSerialLine {
+  const levelMatch = rawText.match(/^([IWE])\s*\((\d+)\)\s*([^:]+):\s*(.*)$/);
+  const level = levelMatch ? (levelMatch[1] as "I" | "W" | "E") : undefined;
+  const tick = levelMatch ? levelMatch[2] : undefined;
+  const tag = levelMatch ? levelMatch[3].trim() : undefined;
+  const body = levelMatch ? levelMatch[4].trim() : rawText.trim();
+
+  const mqttOut = body.match(/^📤\s*\[([^\]]+)\]\s*(\{.*\})\s*$/u);
+  if (mqttOut) {
+    return {
+      structured: true,
+      level,
+      tick,
+      tag,
+      topic: mqttOut[1].trim(),
+      payload: tryNormalizeJsonInline(mqttOut[2].trim()),
+      body,
+      raw: rawText,
+    };
+  }
+
+  const mqttEvent = body.match(/^📨\s*Evento MQTT:\s*(.+)$/u);
+  if (mqttEvent) {
+    return {
+      structured: true,
+      level,
+      tick,
+      tag,
+      body: mqttEvent[1].trim(),
+      raw: rawText,
+    };
+  }
+
+  if (levelMatch) {
+    return { structured: true, level, tick, tag, body, raw: rawText };
+  }
+
+  return { structured: false, raw: rawText };
 }
 
 // ─── Main IDE Layout ─────────────────────────────────────────────────────────
@@ -1235,9 +1294,36 @@ export function IDELayout() {
                       {showTimestamps && line.timestamp && (
                         <span className="serial-line-timestamp">[{line.timestamp}] </span>
                       )}
-                      <span className={`serial-line-text serial-line-text--${line.type}`}>
-                        {line.text}
-                      </span>
+                      {(() => {
+                        if (line.type !== "plain") {
+                          return <span className={`serial-line-text serial-line-text--${line.type}`}>{line.text}</span>;
+                        }
+
+                        const parsed = parseSerialLine(line.text);
+                        if (parsed.structured) {
+                          return (
+                            <span className="serial-line-rich serial-line-rich--plain">
+                              {(parsed.level || parsed.tick || parsed.tag) && (
+                                <span className="serial-meta">
+                                  {parsed.level && <span>{parsed.level}</span>}
+                                  {parsed.tick && <span>({parsed.tick})</span>}
+                                  {parsed.tag && <span>{parsed.tag}</span>}
+                                </span>
+                              )}
+                              {parsed.topic ? (
+                                <>
+                                  <span className="serial-topic">[{parsed.topic}]</span>
+                                  {parsed.payload && <span className="serial-json">{parsed.payload}</span>}
+                                </>
+                              ) : (
+                                <span className="serial-line-text serial-line-text--plain">{parsed.body}</span>
+                              )}
+                            </span>
+                          );
+                        }
+
+                        return <span className="serial-line-text serial-line-text--plain">{line.text}</span>;
+                      })()}
                     </div>
                   ))}
                 </div>
