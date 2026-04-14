@@ -363,7 +363,9 @@ export function IDELayout() {
   const cancelRef = useRef(false);
 
   const handleCancelProcess = async () => {
+    if (cancelRef.current) return;
     cancelRef.current = true;
+    setOutputLines(prev => [...prev, { text: "⏹ Cancellation requested...", type: "warn" }]);
     try {
       await invoke("cancel_process");
     } catch (e) {
@@ -416,7 +418,7 @@ export function IDELayout() {
       return;
     }
     if (isBuilding || isFlashing) {
-      handleCancelProcess();
+      await handleCancelProcess();
       return;
     }
     setIsBuilding(true);
@@ -441,15 +443,22 @@ export function IDELayout() {
         }
       }
 
+      if (cancelRef.current) {
+        throw new Error("Build cancelled");
+      }
+
       const res = await invoke<string>("build_project", { projectPath: activeProjectPath });
       setOutputLines(prev => [...prev, { text: `✓ ${res}`, type: "ok" }]);
       setFeatureDiagnostics([]); // clear on success
     } catch (e) {
-      setOutputLines(prev => [...prev, { text: `[Error] ${e}`, type: "err" }]);
-      if (String(e) !== "Build cancelled" && !String(e).includes("cancelled")) {
+      if (cancelRef.current || String(e).toLowerCase().includes("cancel")) {
+        setOutputLines(prev => [...prev, { text: "⏹ Build cancelled.", type: "warn" }]);
+      } else {
+        setOutputLines(prev => [...prev, { text: `[Error] ${e}`, type: "err" }]);
         await runDiagnosticsOnFailure();
       }
     } finally {
+      cancelRef.current = false;
       setIsBuilding(false);
     }
   };
@@ -547,7 +556,7 @@ export function IDELayout() {
       return;
     }
     if (isBuilding || isFlashing) {
-      handleCancelProcess();
+      await handleCancelProcess();
       return;
     }
     setIsFlashing(true);
@@ -563,9 +572,13 @@ export function IDELayout() {
         setOutputLines(prev => [...prev, { text: "  📡 Serial disconnected to free port for flashing.", type: "dim" }]);
       }
 
+      if (cancelRef.current) throw new Error("Build cancelled");
+
       // 1. Auto-save before any compilation
       const saved = await autoSaveActiveFile();
       if (!saved) { setIsFlashing(false); return; }
+
+      if (cancelRef.current) throw new Error("Build cancelled");
 
       // 1.1 Target Installation Check
       if (selectedBoardDef) {
@@ -578,6 +591,8 @@ export function IDELayout() {
           return;
         }
       }
+
+      if (cancelRef.current) throw new Error("Build cancelled");
 
       // 1.5. Target Sync Check
       if (selectedBoardDef) {
@@ -598,6 +613,8 @@ export function IDELayout() {
         }
       }
 
+      if (cancelRef.current) throw new Error("Build cancelled");
+
       // 2. Build
       setOutputLines(prev => [...prev, { text: "> cargo build --release", type: "prompt" }]);
       await invoke<string>("build_project", { projectPath: activeProjectPath });
@@ -606,11 +623,15 @@ export function IDELayout() {
 
       // 3. Flash
       setOutputLines(prev => [...prev, { text: "> Flashing...", type: "prompt" }]);
+      if (cancelRef.current) throw new Error("Build cancelled");
       const res = await invoke<string>("flash_firmware", {
         projectPath: activeProjectPath,
         flashTool: selectedBoardDef?.flashTool || "espflash",
         port: selectedPort === "Auto" ? null : selectedPort
       });
+
+      if (cancelRef.current) throw new Error("Flash cancelled");
+
       setOutputLines(prev => [...prev, { text: `✓ ${res}`, type: "ok" }]);
       setFeatureDiagnostics([]); // clear on success
 
@@ -633,11 +654,14 @@ export function IDELayout() {
         }
       }
     } catch (e) {
-      setOutputLines(prev => [...prev, { text: `[Error] Deploy failed: ${e}`, type: "err" }]);
-      if (String(e) !== "Build cancelled" && !String(e).includes("cancelled")) {
+      if (cancelRef.current || String(e).toLowerCase().includes("cancel")) {
+        setOutputLines(prev => [...prev, { text: "⏹ Upload cancelled.", type: "warn" }]);
+      } else {
+        setOutputLines(prev => [...prev, { text: `[Error] Deploy failed: ${e}`, type: "err" }]);
         await runDiagnosticsOnFailure();
       }
     } finally {
+      cancelRef.current = false;
       setIsBuilding(false);
       setIsFlashing(false);
     }
