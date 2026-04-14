@@ -71,7 +71,7 @@ interface ProjectState {
 export const useIDEStore = create<EditorState & BoardSelectorState & ProjectState>((set) => ({
   activeFile: null,
   content: '// Welcome to Rusteon IDE\n// Open a project to get started',
-  autoSaveEnabled: false,
+  autoSaveEnabled: true,
   openTabs: [],
   logs: ['Rusteon IDE initialized...'],
   lspStatus: 'idle',
