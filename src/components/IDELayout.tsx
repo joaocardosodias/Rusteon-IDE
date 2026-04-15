@@ -35,8 +35,6 @@ import BugReportIcon from "@mui/icons-material/BugReport";
 import NoteAddIcon from "@mui/icons-material/NoteAdd";
 import FolderIcon from "@mui/icons-material/Folder";
 import SaveIcon from "@mui/icons-material/Save";
-import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import CloseOutlinedIcon from "@mui/icons-material/CloseOutlined";
 import SendOutlinedIcon from "@mui/icons-material/SendOutlined";
@@ -63,6 +61,15 @@ type ParsedSerialLine = {
   payload?: string;
   body?: string;
   raw: string;
+};
+
+type ParsedFlashProgress = {
+  elapsed: string;
+  current: number;
+  total: number;
+  address: string;
+  status: string;
+  percent: number;
 };
 
 function logColor(type: LogLine["type"]) {
@@ -156,6 +163,43 @@ function parseSerialLine(rawText: string): ParsedSerialLine {
   return { structured: false, raw: rawText };
 }
 
+function splitFlashProgressEntries(text: string): string[] {
+  const marker = /\[\d{2}:\d{2}:\d{2}\]\s+\[/g;
+  const indices: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = marker.exec(text)) !== null) {
+    indices.push(match.index);
+  }
+
+  if (indices.length <= 1) return [text];
+
+  const out: string[] = [];
+  for (let i = 0; i < indices.length; i++) {
+    const start = indices[i];
+    const end = i + 1 < indices.length ? indices[i + 1] : text.length;
+    const part = text.slice(start, end).trim();
+    if (part) out.push(part);
+  }
+  return out.length ? out : [text];
+}
+
+function parseFlashProgressLine(text: string): ParsedFlashProgress | null {
+  const m = text.match(/^\[(\d{2}:\d{2}:\d{2})\]\s+\[[^\]]*\]\s+(\d+)\/(\d+)\s+(0x[0-9a-fA-F]+)\s+(.+)$/);
+  if (!m) return null;
+  const current = Number(m[2]);
+  const total = Number(m[3]);
+  if (!Number.isFinite(current) || !Number.isFinite(total) || total <= 0) return null;
+  const percent = Math.max(0, Math.min(100, (current / total) * 100));
+  return {
+    elapsed: m[1],
+    current,
+    total,
+    address: m[4],
+    status: m[5].trim(),
+    percent,
+  };
+}
+
 // ─── Main IDE Layout ─────────────────────────────────────────────────────────
 export function IDELayout() {
 
@@ -213,7 +257,6 @@ export function IDELayout() {
   const setActiveFile = useIDEStore((state) => state.setActiveFile);
   const setContent = useIDEStore((state) => state.setContent);
   const content = useIDEStore((state) => state.content);
-  const featureDiagnostics = useIDEStore((state) => state.featureDiagnostics);
   const setFeatureDiagnostics = useIDEStore((state) => state.setFeatureDiagnostics);
   const standardErrors = useIDEStore((state) => state.standardErrors);
   const setStandardErrors = useIDEStore((state) => state.setStandardErrors);
@@ -223,9 +266,10 @@ export function IDELayout() {
   const setSerialConnected = useIDEStore((state) => state.setSerialConnected);
   const autoSaveEnabled = useIDEStore((state) => state.autoSaveEnabled);
   const setAutoSaveEnabled = useIDEStore((state) => state.setAutoSaveEnabled);
+  const rustAnalyzerEnabled = useIDEStore((state) => state.rustAnalyzerEnabled);
+  const setRustAnalyzerEnabled = useIDEStore((state) => state.setRustAnalyzerEnabled);
 
   // LSP State
-  const lspStatus = useIDEStore((state) => state.lspStatus);
   const lspLogs = useIDEStore((state) => state.lspLogs);
   const clearLspLogs = useIDEStore((state) => state.clearLspLogs);
 
@@ -445,10 +489,18 @@ export function IDELayout() {
   };
 
   const autoSaveActiveFile = async (): Promise<boolean> => {
-    if (!activeFile) return true; // nothing to save
+    const getter = (window as any).__RUSTEON_EDITOR_GET_VALUE__ as
+      | undefined
+      | (() => { path: string | null; content: string });
+
+    const latest = getter ? getter() : null;
+    const pathToSave = latest?.path ?? activeFile;
+    const contentToSave = latest?.content ?? content;
+
+    if (!pathToSave) return true; // nothing to save
     try {
-      await invoke("save_file", { path: activeFile, content });
-      setOutputLines(prev => [...prev, { text: `  💾 Auto-saved ${activeFile.split(/[/\\]/).pop()}`, type: "dim" }]);
+      await invoke("save_file", { path: pathToSave, content: contentToSave });
+      setOutputLines(prev => [...prev, { text: `  💾 Auto-saved ${pathToSave.split(/[/\\]/).pop()}`, type: "dim" }]);
       return true;
     } catch (e) {
       setOutputLines(prev => [...prev, { text: `[Error] Auto-save failed: ${e}`, type: "err" }]);
@@ -768,10 +820,18 @@ export function IDELayout() {
   }, [handleDebug]);
 
   const handleSaveFile = async () => {
-    if (activeFile) {
+    const getter = (window as any).__RUSTEON_EDITOR_GET_VALUE__ as
+      | undefined
+      | (() => { path: string | null; content: string });
+
+    const latest = getter ? getter() : null;
+    const pathToSave = latest?.path ?? activeFile;
+    const contentToSave = latest?.content ?? content;
+
+    if (pathToSave) {
       try {
-        await invoke("save_file", { path: activeFile, content });
-        addLog(`✓ Saved ${activeFile.split(/[/\\]/).pop()}`);
+        await invoke("save_file", { path: pathToSave, content: contentToSave });
+        addLog(`✓ Saved ${pathToSave.split(/[/\\]/).pop()}`);
       } catch (e) {
         addLog(`[Error] Failed to save file: ${e}`);
       }
@@ -869,6 +929,7 @@ export function IDELayout() {
       { label: "Open Project...", action: () => { handleOpenFolder(); setOpenMenu(null); }, icon: <FolderOpenIcon fontSize="small"/> },
       { label: "Save", action: () => { handleSaveFile(); setOpenMenu(null); }, icon: <SaveIcon fontSize="small"/>, shortcut: "Ctrl+S" },
       { label: "Auto Save", action: () => setAutoSaveEnabled(!autoSaveEnabled), isCheckbox: true, checked: autoSaveEnabled },
+      { label: "Rust Analyzer", action: () => setRustAnalyzerEnabled(!rustAnalyzerEnabled), isCheckbox: true, checked: rustAnalyzerEnabled },
       { divider: true },
       { label: "Exit", action: () => getCurrentWindow().close() }
     ],
@@ -1229,7 +1290,49 @@ export function IDELayout() {
             {activeBottomTab === "out" && (
               <div ref={outputRef} className="console-output">
                 {outputLines.map((line, i) => (
-                  <div key={i} className="console-line" style={{ color: logColor(line.type) }}>{line.text}</div>
+                  <div key={i} className="console-line" style={{ color: logColor(line.type) }}>
+                    {(() => {
+                      const parts = splitFlashProgressEntries(line.text);
+                      if (parts.length === 1) {
+                        const parsed = parseFlashProgressLine(parts[0]);
+                        if (!parsed) return line.text;
+                        return (
+                          <div className="console-progress-line">
+                            <div className="console-progress-meta">
+                              <span>[{parsed.elapsed}]</span>
+                              <span>{parsed.current}/{parsed.total}</span>
+                              <span>{parsed.address}</span>
+                              <span>{parsed.status}</span>
+                            </div>
+                            <div className="console-progress-track">
+                              <div className="console-progress-fill" style={{ width: `${parsed.percent}%` }} />
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      const parsedEntries = parts.map(parseFlashProgressLine);
+                      if (parsedEntries.some((p) => !p)) return line.text;
+
+                      return (
+                        <div className="console-progress-group">
+                          {parsedEntries.map((p, idx2) => (
+                            <div key={idx2} className="console-progress-line">
+                              <div className="console-progress-meta">
+                                <span>[{p!.elapsed}]</span>
+                                <span>{p!.current}/{p!.total}</span>
+                                <span>{p!.address}</span>
+                                <span>{p!.status}</span>
+                              </div>
+                              <div className="console-progress-track">
+                                <div className="console-progress-fill" style={{ width: `${p!.percent}%` }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
                 ))}
                 <div className="console-line">
                   <span style={{ color: "var(--syn-fn)" }}>&gt;</span>{" "}

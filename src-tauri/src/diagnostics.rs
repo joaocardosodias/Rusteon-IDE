@@ -442,6 +442,18 @@ fn extract_crate_from_path(path: &str) -> Option<String> {
     None
 }
 
+fn required_features_for_missing_crate(crate_name: &str, chip: &str) -> Vec<String> {
+    match crate_name {
+        // Core esp-rs crates usually require exactly one chip feature.
+        "esp-hal" | "esp-println" | "esp-bootloader-esp-idf" | "esp-radio" | "esp-wifi" => {
+            vec![chip.to_string()]
+        }
+        // For no_std templates, these defaults are usually what users need to compile quickly.
+        "esp-backtrace" => vec![chip.to_string(), "panic-handler".to_string(), "println".to_string()],
+        _ => Vec::new(),
+    }
+}
+
 #[tauri::command]
 pub async fn remove_feature_from_cargo(
     project_path: String,
@@ -603,12 +615,19 @@ pub async fn add_crate_to_cargo(
     project_path: String,
     crate_name: String,
 ) -> Result<(), String> {
+    let chip = infer_chip_from_cargo(&project_path);
+    let features = required_features_for_missing_crate(crate_name.as_str(), chip.as_str());
+
     let mut cmd = Command::new("cargo");
     cmd.current_dir(&project_path)
        .arg("add")
        .arg(&crate_name)
        .env_remove("RUSTUP_TOOLCHAIN")
        .env_remove("CARGO");
+
+    if !features.is_empty() {
+        cmd.arg("--features").arg(features.join(","));
+    }
 
     let output = cmd.output().map_err(|e| format!("Failed to run cargo add: {}", e))?;
     if !output.status.success() {

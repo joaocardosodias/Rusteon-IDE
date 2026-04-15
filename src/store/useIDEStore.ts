@@ -34,6 +34,7 @@ interface EditorState {
   activeFile: string | null;
   content: string;
   autoSaveEnabled: boolean;
+  rustAnalyzerEnabled: boolean;
   openTabs: OpenTab[];
   logs: string[];
   lspStatus: LspStatus;
@@ -44,6 +45,7 @@ interface EditorState {
   setActiveFile: (file: string | null) => void;
   setContent: (content: string) => void;
   setAutoSaveEnabled: (enabled: boolean) => void;
+  setRustAnalyzerEnabled: (enabled: boolean) => void;
   addOpenTab: (tab: OpenTab) => void;
   removeOpenTab: (path: string) => void;
   addLog: (log: string) => void;
@@ -72,6 +74,7 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   activeFile: null,
   content: '// Welcome to Rusteon IDE\n// Open a project to get started',
   autoSaveEnabled: true,
+  rustAnalyzerEnabled: true,
   openTabs: [],
   logs: ['Rusteon IDE initialized...'],
   lspStatus: 'idle',
@@ -82,6 +85,7 @@ export const useIDEStore = create<EditorState & BoardSelectorState & ProjectStat
   setActiveFile: (file) => set({ activeFile: file }),
   setContent: (content) => set({ content }),
   setAutoSaveEnabled: (enabled) => set({ autoSaveEnabled: enabled }),
+  setRustAnalyzerEnabled: (enabled) => set({ rustAnalyzerEnabled: enabled }),
   addOpenTab: (tab) => set((state) => {
     if (state.openTabs.some(t => t.path === tab.path)) return {};
     return { openTabs: [...state.openTabs, tab] };

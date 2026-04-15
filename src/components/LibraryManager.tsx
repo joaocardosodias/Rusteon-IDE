@@ -61,6 +61,7 @@ export function LibraryManager() {
   const [installPanelLoading, setInstallPanelLoading] = useState(false);
   const [installPanelError, setInstallPanelError] = useState<string | null>(null);
   const [installPanelChecked, setInstallPanelChecked] = useState<Record<string, boolean>>({});
+  const [diagnosticBusy, setDiagnosticBusy] = useState<Record<string, boolean>>({});
 
   // Fetch installed libs when project path changes
   useEffect(() => {
@@ -388,6 +389,9 @@ export function LibraryManager() {
       </button>
     );
   };
+
+  const diagKey = (diag: { crate_name: string; missing_feature: string; file: string; line: number }, idx: number) =>
+    `${diag.crate_name}:${diag.missing_feature}:${diag.file}:${diag.line}:${idx}`;
 
   return (
     <div className="board-manager">
@@ -735,6 +739,8 @@ export function LibraryManager() {
                   </button>
                   {featureDiagnostics.map((diag, idx) => {
                     const isMissingCrate = diag.missing_feature === "";
+                    const key = diagKey(diag, idx);
+                    const busy = !!diagnosticBusy[key];
                     
                     return (
                     <div key={idx} className="bm-card" style={{ borderLeft: '3px solid #ff3a3a' }}>
@@ -767,6 +773,7 @@ export function LibraryManager() {
                             title="ssd1306 no longer exposes an `i2c` Cargo feature; remove it from Cargo.toml if present."
                             onClick={async () => {
                               if (!activeProjectPath) return;
+                              setDiagnosticBusy(prev => ({ ...prev, [key]: true }));
                               try {
                                 await invoke("remove_feature_from_cargo", {
                                   projectPath: activeProjectPath,
@@ -778,17 +785,32 @@ export function LibraryManager() {
                                 fetchInstalled();
                               } catch (e) {
                                 addLog(`[Error] Failed to remove feature: ${e}`);
+                              } finally {
+                                setDiagnosticBusy(prev => {
+                                  const n = { ...prev };
+                                  delete n[key];
+                                  return n;
+                                });
                               }
                             }}
+                            disabled={busy || !activeProjectPath}
                           >
-                            Remove obsolete i2c
+                            {busy ? (
+                              <>
+                                <div className="bm-inline-spinner" />
+                                Fixing...
+                              </>
+                            ) : (
+                              <>Remove obsolete i2c</>
+                            )}
                           </button>
                         )}
                         <button
-                          className="bm-btn bm-btn--install"
+                          className={`bm-btn ${busy ? "bm-btn--progress" : "bm-btn--install"}`}
                           style={{ background: 'var(--ide-accent)' }}
                           onClick={async () => {
                             if (!activeProjectPath) return;
+                            setDiagnosticBusy(prev => ({ ...prev, [key]: true }));
                             try {
                               if (isMissingCrate) {
                                 await invoke("add_crate_to_cargo", {
@@ -810,13 +832,34 @@ export function LibraryManager() {
                               fetchInstalled();
                             } catch (e) {
                               addLog(`[Error] Failed to fix: ${e}`);
+                            } finally {
+                              setDiagnosticBusy(prev => {
+                                const n = { ...prev };
+                                delete n[key];
+                                return n;
+                              });
                             }
                           }}
+                          disabled={busy || !activeProjectPath}
                         >
-                          <AutoFixHighIcon sx={{ fontSize: 14 }} />
-                          FIX
+                          {busy ? (
+                            <>
+                              <div className="bm-progress-fill" style={{ width: '100%' }} />
+                              <span className="bm-progress-text">Fixing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <AutoFixHighIcon sx={{ fontSize: 14 }} />
+                              FIX
+                            </>
+                          )}
                         </button>
                       </div>
+                      {busy && (
+                        <div className="bm-progress-bar">
+                          <div className="bm-progress-bar-fill bm-progress-bar-fill--indeterminate" />
+                        </div>
+                      )}
                     </div>
                   )})}
                 </div>

@@ -7,7 +7,7 @@ import { useDebugStore } from "../store/useDebugStore";
 import { LspClient } from "../api/lspClient";
 
 export function Editor() {
-  const { content, setContent, activeFile, activeProjectPath, addLog } = useIDEStore();
+  const { content, setContent, activeFile, activeProjectPath, addLog, rustAnalyzerEnabled } = useIDEStore();
 
   const lspRef = useRef<LspClient | null>(null);
   const monacoRef = useRef<any>(null);
@@ -25,6 +25,14 @@ export function Editor() {
   // ──── LSP Lifecycle Management ──────────────────────────────────────────────
   useEffect(() => {
     if (!activeProjectPath) return;
+
+    if (!rustAnalyzerEnabled) {
+      if (lspRef.current) {
+        lspRef.current.stop();
+        lspRef.current = null;
+      }
+      return;
+    }
 
     const startLsp = async () => {
       // Clean up previous instance if any
@@ -93,11 +101,11 @@ export function Editor() {
         lspRef.current.stop();
       }
     };
-  }, [activeProjectPath, addLog]);
+  }, [activeProjectPath, addLog, rustAnalyzerEnabled]);
 
   // ──── LSP Active File Tracking ──────────────────────────────────────────────
   useEffect(() => {
-    if (!lspRef.current || !activeFile || !activeFile.endsWith('.rs')) return;
+    if (!rustAnalyzerEnabled || !lspRef.current || !activeFile || !activeFile.endsWith('.rs')) return;
 
     let val = content;
     if (editorRef.current) val = editorRef.current.getValue();
@@ -110,7 +118,7 @@ export function Editor() {
         lspRef.current.didClose(activeFile);
       }
     };
-  }, [activeFile]);
+  }, [activeFile, rustAnalyzerEnabled]);
 
 
   // ──── Reative Debugging Decorations ─────────────────────────────────────────
@@ -298,7 +306,7 @@ export function Editor() {
           await invoke("save_file", { path: file, content: currentContent });
           addLog(`✓ Saved ${file.split(/[/\\]/).pop()}`);
           
-          if (lspRef.current) {
+          if (rustAnalyzerEnabled && lspRef.current) {
             lspRef.current.didSave(); // sync disk state for LSP
           }
         } catch (e) {
@@ -320,7 +328,7 @@ export function Editor() {
     });
 
     // Initialize providers if LSP was ready early
-    if (lspRef.current && lspRef.current.isInitialized) {
+    if (rustAnalyzerEnabled && lspRef.current && lspRef.current.isInitialized) {
       setupMonacoProviders();
     }
   };
@@ -424,7 +432,7 @@ export function Editor() {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
       const file = getActiveFile();
-      if (lspRef.current && file && file.endsWith('.rs')) {
+      if (rustAnalyzerEnabled && lspRef.current && file && file.endsWith('.rs')) {
         lspRef.current.didChange(val);
       }
 
@@ -436,6 +444,20 @@ export function Editor() {
       }
     }, 300);
   };
+
+  useEffect(() => {
+    const w = window as any;
+    w.__RUSTEON_EDITOR_GET_VALUE__ = () => ({
+      path: useIDEStore.getState().activeFile,
+      content: editorRef.current ? editorRef.current.getValue() : useIDEStore.getState().content,
+    });
+
+    return () => {
+      if (w.__RUSTEON_EDITOR_GET_VALUE__) {
+        delete w.__RUSTEON_EDITOR_GET_VALUE__;
+      }
+    };
+  }, []);
 
   return (
     <div style={{ height: '100%', background: '#0d0e10' }}>

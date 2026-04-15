@@ -798,6 +798,44 @@ select {
   display: block;
 }
 
+.console-progress-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.console-progress-line {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 5px;
+}
+
+.console-progress-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: #aab0bb;
+}
+
+.console-progress-track {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.console-progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #7a8ea8, #9fb1c9);
+  transition: width 180ms linear;
+}
+
 /* ── Serial Monitor Panel ───────────────────────────────────────────────────*/
 .serial-panel {
   display: flex;
@@ -2076,6 +2114,15 @@ select {
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   margin-bottom: 8px;
+}
+
+.bm-inline-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
 }
 
 /* Indeterminate progress */
